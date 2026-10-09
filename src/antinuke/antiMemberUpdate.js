@@ -46,28 +46,30 @@ import {
   
         const trackingKey = `${guild.id}_antiMemberUpdate_${newMember.id}_${executor.id}`;
         const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Member Update', client, trackingKey);
-
-        const revertPromise = (async () => {
-          if (antinukeData?.disabledEvents?.includes('autoRecovery')) return false;
-          try {
-            const tasks = [];
-            if (roleChanged) {
-              tasks.push(newMember.roles.set(oldMember.roles.cache, 'Roynix Antinuke System | Reverting Role Update'));
-            }
-            if (nicknameChanged) {
-              tasks.push(newMember.setNickname(oldMember.nickname || null, 'Roynix Antinuke System | Reverting Nickname Change'));
-            }
-            if (timeoutChanged) {
-              tasks.push(newMember.timeout(null, 'Roynix Antinuke System | Reverting Timeout'));
-            }
-            await Promise.all(tasks);
-            return true;
-          } catch {
-            return false;
+  
+        const recoverPromise = (async () => {
+          let reverted = false;
+          if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
+            try {
+              if (roleChanged) {
+                await newMember.roles.set(oldMember.roles.cache, 'Roynix Antinuke System | Reverting Role Update');
+              }
+      
+              if (nicknameChanged) {
+                await newMember.setNickname(oldMember.nickname || null, 'Roynix Antinuke System | Reverting Nickname Change');
+              }
+      
+              if (timeoutChanged) {
+                await newMember.timeout(null, 'Roynix Antinuke System | Reverting Timeout');
+              }
+      
+              reverted = true;
+            } catch (err) {}
           }
+          return reverted;
         })();
 
-        const [actionTaken, reverted] = await Promise.all([punishPromise, revertPromise]);
+        const [actionTaken, reverted] = await Promise.all([punishPromise, recoverPromise]);
   
         if (logChannelId) {
           const logChannel = guild.channels.cache.get(logChannelId) || await guild.channels.fetch(logChannelId).catch(() => null);

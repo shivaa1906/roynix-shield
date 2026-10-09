@@ -27,33 +27,23 @@ export async function punishExecutor(guild, executor, punishment = 'ban', reason
 
     let actionTaken = '';
     try {
-        // 2. 0ms in-memory member lookup (skips slow HTTP fetch if already in Gateway cache)
-        const executorMember = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
-
-        if (executorMember) {
-            switch (punishment) {
-                case 'kick':
-                    if (executorMember.kickable) {
-                        await executorMember.kick(reason);
-                        actionTaken = 'Kicked';
-                    }
-                    break;
-                case 'ban':
-                default:
-                    if (executorMember.bannable) {
-                        await executorMember.ban({ reason });
-                        actionTaken = 'Banned';
-                    } else if (executorMember.manageable) {
-                        await executorMember.roles.set([]);
-                        await executorMember.timeout(1000 * 60 * 60 * 24 * 26, reason);
-                        actionTaken = 'Roles Removed (Fallback)';
-                    }
-                    break;
+        if (punishment === 'kick') {
+            const executorMember = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
+            if (executorMember?.kickable) {
+                await executorMember.kick(reason);
+                actionTaken = 'Kicked';
             }
-        } else if (punishment === 'ban') {
-            // Member left server after rogue action; ban User ID directly via REST ban
-            await guild.bans.create(executor.id, { reason }).catch(() => null);
-            actionTaken = 'Banned';
+        } else {
+            // Ban mode: Zero-wait direct ban dispatch
+            const cachedMember = guild.members.cache.get(executor.id);
+            if (cachedMember && !cachedMember.bannable && cachedMember.manageable) {
+                await cachedMember.roles.set([]);
+                await cachedMember.timeout(1000 * 60 * 60 * 24 * 26, reason);
+                actionTaken = 'Roles Removed (Fallback)';
+            } else {
+                await guild.bans.create(executor.id, { reason }).catch(() => null);
+                actionTaken = 'Banned';
+            }
         }
     } catch {}
 

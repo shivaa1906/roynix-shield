@@ -39,10 +39,11 @@ import {
   
         const trackingKey = `${guild.id}_antiChannelDelete_${channel.id}_${executor.id}`;
         const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Channel Delete', client, trackingKey);
-
+  
         const recoverPromise = (async () => {
-          if (antinukeData?.disabledEvents?.includes('autoRecovery')) return false;
-          try {
+          let recreated = false;
+          if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
+            try {
             switch (channel.type) {
                 case ChannelType.GuildText:
                   await guild.channels.create({
@@ -56,7 +57,8 @@ import {
                     permissionOverwrites: channel.permissionOverwrites.cache,
                     reason: 'Roynix Antinuke System | Channel Recovered'
                   });
-                  return true;
+                  recreated = true;
+                  break;
               
                 case ChannelType.GuildVoice:
                   await guild.channels.create({
@@ -71,7 +73,8 @@ import {
                     permissionOverwrites: channel.permissionOverwrites.cache,
                     reason: 'Roynix Antinuke System | Channel Recovered'
                   });
-                  return true;
+                  recreated = true;
+                  break;
               
                 case ChannelType.GuildForum:
                   await guild.channels.create({
@@ -87,7 +90,8 @@ import {
                     defaultThreadRateLimitPerUser: channel.defaultThreadRateLimitPerUser,
                     defaultSortOrder: channel.defaultSortOrder
                   });
-                  return true;
+                  recreated = true;
+                  break;
               
                 case ChannelType.GuildAnnouncement:
                   await guild.channels.create({
@@ -100,7 +104,8 @@ import {
                     permissionOverwrites: channel.permissionOverwrites.cache,
                     reason: 'Roynix Antinuke System | Channel Recovered'
                   });
-                  return true;
+                  recreated = true;
+                  break;
               
                 case ChannelType.GuildStageVoice:
                   await guild.channels.create({
@@ -114,7 +119,8 @@ import {
                     permissionOverwrites: channel.permissionOverwrites.cache,
                     reason: 'Roynix Antinuke System | Channel Recovered'
                   });
-                  return true;
+                  recreated = true;
+                  break;
               
                 case ChannelType.GuildCategory:
                   await guild.channels.create({
@@ -124,19 +130,23 @@ import {
                     permissionOverwrites: channel.permissionOverwrites.cache,
                     reason: 'Roynix Antinuke System | Channel Recovered'
                   });
-                  return true;
+                  recreated = true;
+                  break;
               
                 default:
-                  return false;
+                  console.log('Unhandled channel type:', channel.type);
+                  break;
             }
-          } catch {
-            return false;
+        } catch(err) {
+            recreated = false;
           }
-        })();
+        }
+        return recreated;
+      })();
 
-        const [actionTaken, recreated] = await Promise.all([punishPromise, recoverPromise]);
-  
-        const logChannelId = antinukeData.logsChannel;
+      const [actionTaken, recreated] = await Promise.all([punishPromise, recoverPromise]);
+
+      const logChannelId = antinukeData.logsChannel;
         if (logChannelId) {
           const logChannel = guild.channels.cache.get(logChannelId) || await guild.channels.fetch(logChannelId).catch(() => null);
           if (logChannel) {

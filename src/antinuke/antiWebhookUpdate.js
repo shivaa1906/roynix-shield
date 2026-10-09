@@ -63,7 +63,7 @@ import {
   
         const logChannelId = antinukeData.logsChannel;
         if (logChannelId) {
-          const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
+          const logChannel = guild.channels.cache.get(logChannelId) || await guild.channels.fetch(logChannelId).catch(() => null);
           if (logChannel) {
             const embed = new EmbedBuilder()
               .setColor(client.color)
@@ -75,7 +75,7 @@ import {
               )
               .setTimestamp();
   
-            await logChannel.send({ embeds: [embed] }).catch(() => null);
+            logChannel.send({ embeds: [embed] }).catch(() => null);
           }
         }
       });

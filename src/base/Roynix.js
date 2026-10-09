@@ -1,12 +1,12 @@
 import { Client, GatewayIntentBits, Partials, EmbedBuilder, AuditLogEvent } from "discord.js";
 import { QuickDB } from "quick.db";
-import { FastDB } from "../utils/fastDb.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import config from "../config/config.js";
 import dotenv from "dotenv";
-import { isBotOwner } from '../utils/isBotOwner.js'
+import { isBotOwner } from '../utils/isBotOwner.js';
+import { FastDB } from '../utils/fastDb.js';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,10 +29,8 @@ class Roynix extends Client {
                 GatewayIntentBits.GuildPresences,
                 GatewayIntentBits.GuildMessages,
                 GatewayIntentBits.GuildMessageReactions,
-                GatewayIntentBits.GuildMessageTyping,
                 GatewayIntentBits.DirectMessages,
                 GatewayIntentBits.DirectMessageReactions,
-                GatewayIntentBits.DirectMessageTyping,
                 GatewayIntentBits.MessageContent,
                 GatewayIntentBits.GuildScheduledEvents,
                 GatewayIntentBits.AutoModerationConfiguration,
@@ -47,6 +45,18 @@ class Roynix extends Client {
                 Partials.Reaction,
                 Partials.GuildScheduledEvent,
             ],
+            rest: {
+                offset: 0,
+                retries: 2,
+                timeout: 10000,
+            },
+            ws: {
+                properties: {
+                    os: 'linux',
+                    browser: 'Discord Client',
+                    device: 'Discord Client',
+                },
+            },
         });
 
         const Nodes = [
@@ -90,29 +100,29 @@ class Roynix extends Client {
             fs.mkdirSync(databasePath, { recursive: true });
         }
 
-        this.noprefixDB = new FastDB({ filePath: path.join(databasePath, "noprefix.db") });
-        this.prefixDB = new FastDB({ filePath: path.join(databasePath, "prefix.db") });
-        this.tosDB = new FastDB({ filePath: path.join(databasePath, "tos.db") });
-        this.errorDB = new FastDB({ filePath: path.join(databasePath, "error.db") });
-        this.antinukeDB = new FastDB({ filePath: path.join(databasePath, "antinuke.db") });
-        this.badgeDB = new FastDB({ filePath: path.join(databasePath, 'badge.db') });
-        this.premiumDB = new FastDB({ filePath: path.join(databasePath, 'premium.db') });
-        this.premiumGuildDB = new FastDB({ filePath: path.join(databasePath, 'premiumGuild.db') });
-        this.userDB = new FastDB({ filePath: path.join(databasePath, 'user.db') });
-        this.automodDB = new FastDB({ filePath: path.join(databasePath, 'automod.db') });
-        this.ticketDB = new FastDB({ filePath: path.join(databasePath, 'ticket.db') });
-        this.autoreactDB = new FastDB({ filePath: path.join(databasePath, 'autoreact.db') });
-        this.loggingDB = new FastDB({ filePath: path.join(databasePath, 'logging.db') });
-        this.welcomeDB = new FastDB({ filePath: path.join(databasePath, 'welcome.db') });
-        this.j2cDB = new FastDB({ filePath: path.join(databasePath, 'j2c.db') });
-        this.activeVcDB = new FastDB({ filePath: path.join(databasePath, 'activevc.db') });
-        this.giveawayDB = new FastDB({ filePath: path.join(databasePath, 'giveaway.db') });
-        this.ignoreDB = new FastDB({ filePath: path.join(databasePath, 'ignore.db') });
-        this.afkDB = new FastDB({ filePath: path.join(databasePath, 'afk.db') });
-        this.mediaDB = new FastDB({ filePath: path.join(databasePath, 'media.db') });
-        this.autoroleDB = new FastDB({ filePath: path.join(databasePath, 'autorole.db') });
-        this.autoresponderDB = new FastDB({ filePath: path.join(databasePath, 'autoresponder.db') });
-        this.activityroleDB = new FastDB({ filePath: path.join(databasePath, 'activityrole.db') });
+        this.noprefixDB = new FastDB(new QuickDB({ filePath: path.join(databasePath, "noprefix.db") }));
+        this.prefixDB = new FastDB(new QuickDB({ filePath: path.join(databasePath, "prefix.db") }));
+        this.tosDB = new QuickDB({ filePath: path.join(databasePath, "tos.db") });
+        this.errorDB = new QuickDB({ filePath: path.join(databasePath, "error.db") });
+        this.antinukeDB = new FastDB(new QuickDB({ filePath: path.join(databasePath, "antinuke.db") }));
+        this.badgeDB = new QuickDB({ filePath: path.join(databasePath, 'badge.db') })
+        this.premiumDB = new QuickDB({ filePath: path.join(databasePath, 'premium.db') })
+        this.premiumGuildDB = new QuickDB({ filePath: path.join(databasePath, 'premiumGuild.db') })
+        this.userDB = new QuickDB({ filePath: path.join(databasePath, 'user.db') })
+        this.automodDB = new QuickDB({ filePath: path.join(databasePath, 'automod.db') })
+        this.ticketDB = new QuickDB({ filePath: path.join(databasePath, 'ticket.db') })
+        this.autoreactDB = new QuickDB({ filePath: path.join(databasePath, 'autoreact.db') })
+        this.loggingDB = new QuickDB({ filePath: path.join(databasePath, 'logging.db') })
+        this.welcomeDB = new QuickDB({ filePath: path.join(databasePath, 'welcome.db') })
+        this.j2cDB = new QuickDB({ filePath: path.join(databasePath, 'j2c.db') })
+        this.activeVcDB = new QuickDB({ filePath: path.join(databasePath, 'activevc.db') })
+        this.giveawayDB = new QuickDB({ filePath: path.join(databasePath, 'giveaway.db') })
+        this.ignoreDB = new QuickDB({ filePath: path.join(databasePath, 'ignore.db') })
+        this.afkDB = new QuickDB({ filePath: path.join(databasePath, 'afk.db') })
+        this.mediaDB = new QuickDB({ filePath: path.join(databasePath, 'media.db') })
+        this.autoroleDB = new QuickDB({ filePath: path.join(databasePath, 'autorole.db') })
+        this.autoresponderDB = new QuickDB({ filePath: path.join(databasePath, 'autoresponder.db') })
+        this.activityroleDB = new QuickDB({ filePath: path.join(databasePath, 'activityrole.db') })
 
         // Ultra-low latency in-memory caches
         this.antinukeCache = new Map();
@@ -201,6 +211,20 @@ class Roynix extends Client {
             return await this.antinukeDB.delete(`antinukeData_${guildId}`);
         };
 
+        this.prewarmAntinukeCache = async () => {
+            try {
+                const allEntries = await this.antinukeDB.all();
+                if (Array.isArray(allEntries)) {
+                    for (const item of allEntries) {
+                        const match = item.id.match(/^antinukeData_(\d+)/);
+                        if (match) {
+                            this.antinukeCache.set(match[1], item.value);
+                        }
+                    }
+                }
+            } catch {}
+        };
+
         // Stream audit logs directly from Discord WebSocket gateway for 0ms executor detection & instant fast-path action
         this.on('guildAuditLogEntryCreate', async (entry, guild) => {
             if (!guild || !entry) return;
@@ -251,20 +275,18 @@ class Roynix extends Client {
                             // Execute instant punishment with 0 delay
                             (async () => {
                                 try {
-                                    const executorMember = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
-                                    if (executorMember) {
-                                        if (punishment === 'kick') {
-                                            if (executorMember.kickable) await executorMember.kick(`Roynix Fast-Path | ${moduleName}`);
+                                    if (punishment === 'kick') {
+                                        const executorMember = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
+                                        if (executorMember?.kickable) await executorMember.kick(`Roynix Fast-Path | ${moduleName}`);
+                                    } else {
+                                        // Direct 0ms ban execution
+                                        const cachedMember = guild.members.cache.get(executor.id);
+                                        if (cachedMember && !cachedMember.bannable && cachedMember.manageable) {
+                                            await cachedMember.roles.set([]);
+                                            await cachedMember.timeout(1000 * 60 * 60 * 24 * 26, `Roynix Fast-Path | ${moduleName}`);
                                         } else {
-                                            if (executorMember.bannable) {
-                                                await executorMember.ban({ reason: `Roynix Fast-Path | ${moduleName}` });
-                                            } else if (executorMember.manageable) {
-                                                await executorMember.roles.set([]);
-                                                await executorMember.timeout(1000 * 60 * 60 * 24 * 26, `Roynix Fast-Path | ${moduleName}`);
-                                            }
+                                            await guild.bans.create(executor.id, { reason: `Roynix Fast-Path | ${moduleName}` }).catch(() => null);
                                         }
-                                    } else if (punishment === 'ban') {
-                                        await guild.bans.create(executor.id, { reason: `Roynix Fast-Path | ${moduleName}` }).catch(() => null);
                                     }
                                 } catch {}
                             })();
@@ -276,17 +298,13 @@ class Roynix extends Client {
     }
 
     async start() {
-        // Pre-warm all 23 database caches simultaneously into RAM for 0ms execution
-        const allDbs = [
-            this.noprefixDB, this.prefixDB, this.tosDB, this.errorDB, this.antinukeDB,
-            this.badgeDB, this.premiumDB, this.premiumGuildDB, this.userDB, this.automodDB,
-            this.ticketDB, this.autoreactDB, this.loggingDB, this.welcomeDB, this.j2cDB,
-            this.activeVcDB, this.giveawayDB, this.ignoreDB, this.afkDB, this.mediaDB,
-            this.autoroleDB, this.autoresponderDB, this.activityroleDB
-        ];
-        await Promise.all(allDbs.map(db => db.init?.())).catch(() => null);
-
+        await Promise.all([
+            this.noprefixDB.init(),
+            this.prefixDB.init(),
+            this.antinukeDB.init()
+        ]).catch(() => null);
         await this.loadHandlers();
+        await this.prewarmAntinukeCache();
         if (!config.token) {
             console.error("Missing TOKEN");
             process.exit(1);
