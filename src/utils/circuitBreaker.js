@@ -72,17 +72,19 @@ class CircuitBreaker {
         // Execute parallel containment actions
         const tasks = [];
 
-        // 1. Multi-Bot Quarantine: Instantly strip all roles from all other non-whitelisted bots
+        // 1. Multi-Bot Quarantine: Instantly strip all roles from all other non-whitelisted bots in parallel
         tasks.push((async () => {
+            const botPromises = [];
             let quarantinedBots = 0;
             const bots = guild.members.cache.filter(m => m.user.bot && m.id !== client.user.id);
             for (const [_, botMember] of bots) {
                 if (isBotOwner(botMember.id) || extraOwners.includes(botMember.id) || whitelisted[botMember.id]) continue;
                 if (botMember.manageable && botMember.roles.cache.size > 1) {
-                    await botMember.roles.set([], 'Roynix Circuit Breaker | Emergency Coordinated Raid Lockdown').catch(() => null);
                     quarantinedBots++;
+                    botPromises.push(botMember.roles.set([], 'Roynix Circuit Breaker | Emergency Coordinated Raid Lockdown').catch(() => null));
                 }
             }
+            await Promise.all(botPromises);
             return quarantinedBots;
         })());
 
@@ -97,8 +99,9 @@ class CircuitBreaker {
             return false;
         })());
 
-        // 3. Purge recent webhooks (created in last 10 minutes) to eliminate webhook spam relays
+        // 3. Purge recent webhooks (created in last 10 minutes) in parallel
         tasks.push((async () => {
+            const whPromises = [];
             let purgedWebhooks = 0;
             try {
                 const webhooks = await guild.fetchWebhooks().catch(() => null);
@@ -106,11 +109,12 @@ class CircuitBreaker {
                     const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
                     for (const [_, wh] of webhooks) {
                         if (wh.createdTimestamp > tenMinutesAgo) {
-                            await wh.delete('Roynix Circuit Breaker | Unauthorized Webhook Purge').catch(() => null);
                             purgedWebhooks++;
+                            whPromises.push(wh.delete('Roynix Circuit Breaker | Unauthorized Webhook Purge').catch(() => null));
                         }
                     }
                 }
+                await Promise.all(whPromises);
             } catch {}
             return purgedWebhooks;
         })());

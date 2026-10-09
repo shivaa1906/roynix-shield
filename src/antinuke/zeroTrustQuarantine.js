@@ -27,6 +27,7 @@ export async function quarantineGuildBots(guild, client, antinukeData = null) {
         const whitelisted = data.whitelisted || {};
 
         let quarantinedCount = 0;
+        const quarantinePromises = [];
         const bots = guild.members.cache.filter(m => m.user.bot && m.id !== client.user.id);
 
         for (const [_, botMember] of bots) {
@@ -40,10 +41,13 @@ export async function quarantineGuildBots(guild, client, antinukeData = null) {
             );
 
             if (dangerousRoles.size > 0 && botMember.manageable) {
-                await botMember.roles.remove(dangerousRoles, 'Roynix Zero-Trust | Auto-Quarantine of Unwhitelisted Bot').catch(() => null);
                 quarantinedCount++;
+                quarantinePromises.push(
+                    botMember.roles.remove(dangerousRoles, 'Roynix Zero-Trust | Auto-Quarantine of Unwhitelisted Bot').catch(() => null)
+                );
             }
         }
+        await Promise.all(quarantinePromises);
         return quarantinedCount;
     } catch {
         return 0;
@@ -128,11 +132,15 @@ export const data = {
                 !whitelisted[m.id]
             );
 
+            const stripPromises = [];
             for (const [_, botMember] of botMembersWithRole) {
                 if (botMember.manageable) {
-                    await botMember.roles.remove(newRole, 'Roynix Zero-Trust | Role upgraded to Admin permissions').catch(() => null);
+                    stripPromises.push(
+                        botMember.roles.remove(newRole, 'Roynix Zero-Trust | Role upgraded to Admin permissions').catch(() => null)
+                    );
                 }
             }
+            await Promise.all(stripPromises);
         });
 
         // 3. Monitor bot joins (backup if antiBot is disabled)

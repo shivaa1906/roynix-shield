@@ -9,7 +9,15 @@ import { isBotOwner } from '../utils/isBotOwner.js';
 import { FastDB } from '../utils/fastDb.js';
 import { circuitBreaker } from '../utils/circuitBreaker.js';
 import { blueprintManager } from '../utils/blueprintManager.js';
+import { quarantineGuildBots } from '../antinuke/zeroTrustQuarantine.js';
+import https from "https";
 dotenv.config();
+
+const httpsAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 30000,
+    maxSockets: 100,
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,9 +56,10 @@ class Roynix extends Client {
                 Partials.GuildScheduledEvent,
             ],
             rest: {
+                agent: httpsAgent,
                 offset: 0,
-                retries: 2,
-                timeout: 10000,
+                retries: 1,
+                timeout: 8000,
             },
             ws: {
                 properties: {
@@ -321,7 +330,21 @@ class Roynix extends Client {
 
             if (!guildId || !executorId) return;
 
-            const antinukeData = this.antinukeCache.get(guildId);
+            // Instant in-memory audit log cache pre-population in 0 microseconds
+            const now = Date.now();
+            const user = this.users.cache.get(executorId) || { id: executorId, tag: `Executor#${executorId.slice(-4)}` };
+            const cacheData = {
+                guildId,
+                action: actionType,
+                targetId,
+                executor: user,
+                createdTimestamp: now
+            };
+            this.auditLogCache.set(`${guildId}_${actionType}_${targetId}`, cacheData);
+            this.auditLogCache.set(`${guildId}_${actionType}_any`, cacheData);
+            this.emit(`auditLog_${guildId}_${actionType}`, cacheData);
+
+            const antinukeData = this.antinukeCache.get(guildId) || await this.getAntinukeData(guildId);
             if (!antinukeData?.enabled) return;
 
             const moduleName = AUDIT_EVENT_TO_MODULE[actionType];
@@ -338,28 +361,41 @@ class Roynix extends Client {
                 whitelisted[executorId]?.events?.includes(moduleName)
             ) return;
 
-            const rawKey = `${guildId}_raw_${actionType}_${targetId}_${executorId}`;
-            if (!this.antinukeActionTracker.has(rawKey)) {
-                this.antinukeActionTracker.set(rawKey, { actionTaken: 'Banned', timestamp: Date.now() });
-                setTimeout(() => this.antinukeActionTracker.delete(rawKey), 8000).unref?.();
+            // Deduplicate actions by executor across burst window to conserve REST quota
+            const executorKey = `${guildId}_raw_punished_${executorId}`;
+            if (this.antinukeActionTracker.has(executorKey)) return;
 
-                // 1. Instant raw role quarantine if member is cached
-                const guild = this.guilds.cache.get(guildId);
-                if (guild) {
-                    const cachedMember = guild.members.cache.get(executorId);
-                    if (cachedMember?.manageable) {
-                        cachedMember.roles.set([], `Roynix Raw Gateway FastPath | Role Quarantine`).catch(() => null);
-                    }
-                    circuitBreaker.recordIncident(guild, this, moduleName, cachedMember?.user).catch(() => null);
-                }
+            this.antinukeActionTracker.set(executorKey, { actionTaken: punishment === 'kick' ? 'Kicked' : 'Banned', timestamp: now });
+            setTimeout(() => this.antinukeActionTracker.delete(executorKey), 8000).unref?.();
 
-                // 2. Direct microsecond REST API ban call (bypasses Discord.js event dispatch)
-                if (punishment !== 'kick') {
-                    this.rest.put(Routes.guildBan(guildId, executorId), {
-                        body: { delete_message_seconds: 604800 },
-                        reason: `Roynix Raw-Gateway FastPath | ${moduleName}`
-                    }).catch(() => null);
+            // 1. Instant raw role quarantine if member is cached
+            const guild = this.guilds.cache.get(guildId);
+            if (guild) {
+                const cachedMember = guild.members.cache.get(executorId);
+                if (cachedMember?.manageable) {
+                    cachedMember.roles.set([], `Roynix Raw Gateway FastPath | Role Quarantine`).catch(() => null);
                 }
+                circuitBreaker.recordIncident(guild, this, moduleName, cachedMember?.user || user).catch(() => null);
+            }
+
+            // 2. Direct microsecond REST API dispatch without event loop delay
+            if (punishment === 'kick') {
+                this.rest.delete(Routes.guildMember(guildId, executorId), {
+                    reason: `Roynix Raw-Gateway FastPath | ${moduleName}`
+                }).catch(() => null);
+            } else {
+                this.rest.put(Routes.guildBan(guildId, executorId), {
+                    body: { delete_message_seconds: 604800 },
+                    reason: `Roynix Raw-Gateway FastPath | ${moduleName}`
+                }).catch(() => null);
+            }
+        });
+
+        // Prewarm all guilds on ready with zero delay
+        this.once('ready', () => {
+            for (const [_, guild] of this.guilds.cache) {
+                blueprintManager.captureGuild(guild);
+                quarantineGuildBots(guild, this).catch(() => null);
             }
         });
     }
