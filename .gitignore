@@ -5,3 +5,5 @@ database/
 *.sqlite
 *.log
 errors.log
+*.rar
+*.zip
