@@ -3,6 +3,8 @@ import { isBotOwner } from '../utils/isBotOwner.js';
 import emojis from '../config/emojis.js';
 import { getAuditExecutor } from '../utils/getExecutor.js';
 import { punishExecutor } from '../utils/punishExecutor.js';
+import { circuitBreaker } from '../utils/circuitBreaker.js';
+import { quarantineGuildBots } from './zeroTrustQuarantine.js';
 
 export const data = {
     /**
@@ -18,6 +20,9 @@ export const data = {
             if (!antinukeData?.enabled) return;
             if (antinukeData?.disabledEvents?.includes(event)) return;
 
+            // Immediately neutralize any other unwhitelisted bots holding administrative roles
+            quarantineGuildBots(guild, client, antinukeData).catch(() => null);
+
             const extraOwners = antinukeData?.extraOwners || [];
             const whitelisted = antinukeData?.whitelisted || {};
             const punishment = antinukeData?.punishment || 'ban';
@@ -32,6 +37,8 @@ export const data = {
                 extraOwners.includes(executor.id) ||
                 whitelisted[executor.id]?.events?.includes(event)
             ) return;
+
+            circuitBreaker.recordIncident(guild, client, 'Anti Channel Create', executor).catch(() => null);
 
             const trackingKey = `${guild.id}_antiChannelCreate_${channel.id}_${executor.id}`;
             const [actionTaken, channelDeleted] = await Promise.all([

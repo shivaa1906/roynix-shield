@@ -263,8 +263,9 @@ class Roynix extends Client {
 
             // FAST-PATH ZERO-MS PUNISHMENT ENGINE
             const moduleName = AUDIT_EVENT_TO_MODULE[entry.action];
-            if (entry.executor) {
-                const executor = entry.executor;
+            const executorId = entry.executorId || entry.executor?.id || entry.user_id;
+            const executor = entry.executor || (executorId ? (this.users.cache.get(executorId) || { id: executorId, tag: `User#${executorId.slice(-4)}` }) : null);
+            if (executor) {
                 const antinukeData = this.antinukeCache.get(guild.id) || await this.getAntinukeData(guild.id);
                 if (antinukeData?.enabled) {
                     // Instant self-preservation fast-ban ONLY when antinuke is enabled

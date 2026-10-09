@@ -52,11 +52,22 @@ async function getAuditExecutor(guild, type, targetId, client) {
 
             const restPromise = (async () => {
                 if (guild.members.me && !guild.members.me.permissions.has(PermissionFlagsBits.ViewAuditLog)) return null;
-                const fetchedLogs = await guild.fetchAuditLogs({ type, limit: 3 }).catch(() => null);
+                
+                // Coalesce multiple concurrent requests for same guild/type to prevent Discord 429 Rate Limits
+                if (!botClient._auditFetchPromises) botClient._auditFetchPromises = new Map();
+                const fetchKey = `${guild.id}_${type}`;
+                let inFlight = botClient._auditFetchPromises.get(fetchKey);
+                if (!inFlight) {
+                    inFlight = guild.fetchAuditLogs({ type, limit: 6 }).catch(() => null).finally(() => {
+                        botClient._auditFetchPromises.delete(fetchKey);
+                    });
+                    botClient._auditFetchPromises.set(fetchKey, inFlight);
+                }
+                const fetchedLogs = await inFlight;
                 if (!fetchedLogs?.entries) return null;
                 const entry = fetchedLogs.entries.find(log => targetId ? (log.target?.id === targetId || log.targetId === targetId) : true);
                 if (entry && (now - entry.createdTimestamp < 8000)) {
-                    return entry.executor;
+                    return entry.executor || (entry.executorId ? (guild.client.users.cache.get(entry.executorId) || { id: entry.executorId, tag: `User#${entry.executorId.slice(-4)}` }) : null);
                 }
                 return null;
             })();

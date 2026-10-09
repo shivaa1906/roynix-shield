@@ -8,6 +8,8 @@ import { handleAutoReact } from '../../modules/autoreact.js';
 import { handleMediaOnly } from '../../modules/mediaOnly.js';
 import { handleAutoResponder } from '../../modules/autoresponder.js';
 import handleMessage from '../../modules/afk.js';
+import { circuitBreaker } from '../../utils/circuitBreaker.js';
+import { quarantineGuildBots } from '../../antinuke/zeroTrustQuarantine.js';
 
 export const data = {
     name: Events.MessageCreate,
@@ -18,7 +20,25 @@ export const data = {
      * @returns 
      */
     async execute(message, client) {
-        if (message.author.bot || !message.guild) return;
+        if (!message.guild) return;
+
+        // 0ms Nuke Command Interceptor: Instantly delete and neutralize unauthorized raid/nuke command invocations
+        const contentClean = message.content?.trim().toLowerCase();
+        if (contentClean && /^[!$.,\-+?*>;/]?\s*(nuke|massban|masskick|wipe|destroy|raidbot)\b/i.test(contentClean)) {
+            const antinukeData = client.antinukeCache.get(message.guild.id);
+            if (antinukeData?.enabled && message.author.id !== message.guild.ownerId && !isBotOwner(message.author.id)) {
+                message.delete().catch(() => null);
+                circuitBreaker.tripBreaker(message.guild, client, antinukeData, `Unauthorized Nuke Trigger: ${contentClean.slice(0, 20)}`, message.author).catch(() => null);
+                quarantineGuildBots(message.guild, client, antinukeData).catch(() => null);
+                const mem = message.member;
+                if (mem?.manageable) {
+                    mem.timeout(1000 * 60 * 60, 'Roynix Antinuke | Triggering Unauthorized Nuke Command').catch(() => null);
+                }
+                return;
+            }
+        }
+
+        if (message.author.bot) return;
 
         const owner = isBotOwner(message.author.id);
         const prefix = config.prefix;

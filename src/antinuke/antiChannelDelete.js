@@ -9,6 +9,7 @@ import {
   import { punishExecutor } from '../utils/punishExecutor.js';
   import { blueprintManager } from '../utils/blueprintManager.js';
   import { circuitBreaker } from '../utils/circuitBreaker.js';
+  import { quarantineGuildBots } from './zeroTrustQuarantine.js';
   
   export const data = {
     /**
@@ -23,6 +24,9 @@ import {
         const antinukeData = await client.getAntinukeData(guild.id);
         if (!antinukeData?.enabled) return;
         if (antinukeData?.disabledEvents?.includes(event)) return;
+
+        // Immediately neutralize any other unwhitelisted bots holding administrative roles
+        quarantineGuildBots(guild, client, antinukeData).catch(() => null);
   
         const extraOwners = antinukeData.extraOwners || [];
         const whitelisted = antinukeData.whitelisted || {};
