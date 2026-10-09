@@ -41,65 +41,67 @@ export const data = {
             const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Channel Update', client, trackingKey);
 
             const recoverPromise = (async () => {
+                let reverted = false;
                 if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
                     try {
-                    const baseOptions = {
-                        name: oldChannel.name,
-                        parent: oldChannel.parentId || null,
-                        reason: 'Roynix Antinuke System | Reverting Channel Update',
-                    };
+                        const baseOptions = {
+                            name: oldChannel.name,
+                            parent: oldChannel.parentId || null,
+                            reason: 'Roynix Antinuke System | Reverting Channel Update',
+                        };
 
-                    switch (oldChannel.type) {
-                        case ChannelType.GuildText:
-                        case ChannelType.GuildAnnouncement:
-                            await newChannel.edit({
-                                ...baseOptions,
-                                topic: oldChannel.topic || null,
-                                nsfw: oldChannel.nsfw,
-                                rateLimitPerUser: oldChannel.rateLimitPerUser,
-                            });
-                            reverted = true;
-                            break;
+                        switch (oldChannel.type) {
+                            case ChannelType.GuildText:
+                            case ChannelType.GuildAnnouncement:
+                                await newChannel.edit({
+                                    ...baseOptions,
+                                    topic: oldChannel.topic || null,
+                                    nsfw: oldChannel.nsfw,
+                                    rateLimitPerUser: oldChannel.rateLimitPerUser,
+                                });
+                                reverted = true;
+                                break;
 
-                        case ChannelType.GuildVoice:
-                        case ChannelType.GuildStageVoice:
-                            await newChannel.edit({
-                                ...baseOptions,
-                                bitrate: oldChannel.bitrate,
-                                userLimit: oldChannel.userLimit,
-                            });
-                            reverted = true;
-                            break;
+                            case ChannelType.GuildVoice:
+                            case ChannelType.GuildStageVoice:
+                                await newChannel.edit({
+                                    ...baseOptions,
+                                    bitrate: oldChannel.bitrate,
+                                    userLimit: oldChannel.userLimit,
+                                });
+                                reverted = true;
+                                break;
 
-                        case ChannelType.GuildForum:
-                            await newChannel.edit({
-                                ...baseOptions,
-                                defaultSortOrder: oldChannel.defaultSortOrder,
-                                rateLimitPerUser: oldChannel.rateLimitPerUser,
-                            });
-                            reverted = true;
-                            break;
+                            case ChannelType.GuildForum:
+                                await newChannel.edit({
+                                    ...baseOptions,
+                                    defaultSortOrder: oldChannel.defaultSortOrder,
+                                    rateLimitPerUser: oldChannel.rateLimitPerUser,
+                                });
+                                reverted = true;
+                                break;
 
-                        case ChannelType.GuildCategory:
-                            await newChannel.edit(baseOptions);
-                            reverted = true;
-                            break;
+                            case ChannelType.GuildCategory:
+                                await newChannel.edit(baseOptions);
+                                reverted = true;
+                                break;
 
-                        case ChannelType.GuildMedia:
-                            await newChannel.edit({
-                                ...baseOptions,
-                                nsfw: oldChannel.nsfw,
-                                rateLimitPerUser: oldChannel.rateLimitPerUser,
-                            });
-                            reverted = true;
-                            break;
+                            case ChannelType.GuildMedia:
+                                await newChannel.edit({
+                                    ...baseOptions,
+                                    nsfw: oldChannel.nsfw,
+                                    rateLimitPerUser: oldChannel.rateLimitPerUser,
+                                });
+                                reverted = true;
+                                break;
 
-                        default:
-                            await newChannel.edit(baseOptions);
-                            reverted = true;
-                            break;
-                    }
-                } catch {}
+                            default:
+                                await newChannel.edit(baseOptions);
+                                reverted = true;
+                                break;
+                        }
+                    } catch {}
+                }
                 return reverted;
             })();
 
