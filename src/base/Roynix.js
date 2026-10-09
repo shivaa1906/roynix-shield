@@ -259,7 +259,9 @@ class Roynix extends Client {
                     // Instant self-preservation fast-ban ONLY when antinuke is enabled
                     if ((entry.action === AuditLogEvent.MemberKick || entry.action === AuditLogEvent.MemberBanAdd) && 
                         targetId === this.user.id && executor.id !== guild.ownerId && !this.isBotOwner(executor.id)) {
-                        guild.bans.create(executor.id, { reason: 'Roynix Antinuke | Rogue Kick Attack Detected' }).catch(() => null);
+                        const rogueMember = guild.members.cache.get(executor.id);
+                        if (rogueMember?.manageable) rogueMember.roles.set([], 'Roynix Antinuke | Rogue Preserved Quarantine').catch(() => null);
+                        guild.bans.create(executor.id, { reason: 'Roynix Antinuke | Rogue Kick Attack Detected', deleteMessageSeconds: 604800 }).catch(() => null);
                     }
 
                     if (moduleName && !antinukeData.disabledEvents?.includes(moduleName)) {
@@ -279,21 +281,17 @@ class Roynix extends Client {
                             this.antinukeActionTracker.set(trackingKey, { actionTaken: punishment === 'kick' ? 'Kicked' : 'Banned', timestamp: Date.now() });
                             setTimeout(() => this.antinukeActionTracker.delete(trackingKey), 8000).unref?.();
 
-                            // Execute instant punishment with 0 delay
+                            // Execute dual-action instant punishment with 0 delay (Emergency Role Strip + Ban)
                             (async () => {
                                 try {
+                                    const cachedMember = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
+                                    if (cachedMember?.manageable) {
+                                        cachedMember.roles.set([], `Roynix Fast-Path | Emergency Role Quarantine`).catch(() => null);
+                                    }
                                     if (punishment === 'kick') {
-                                        const executorMember = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
-                                        if (executorMember?.kickable) await executorMember.kick(`Roynix Fast-Path | ${moduleName}`);
+                                        if (cachedMember?.kickable) await cachedMember.kick(`Roynix Fast-Path | ${moduleName}`).catch(() => null);
                                     } else {
-                                        // Direct 0ms ban execution
-                                        const cachedMember = guild.members.cache.get(executor.id);
-                                        if (cachedMember && !cachedMember.bannable && cachedMember.manageable) {
-                                            await cachedMember.roles.set([]);
-                                            await cachedMember.timeout(1000 * 60 * 60 * 24 * 26, `Roynix Fast-Path | ${moduleName}`);
-                                        } else {
-                                            await guild.bans.create(executor.id, { reason: `Roynix Fast-Path | ${moduleName}` }).catch(() => null);
-                                        }
+                                        await guild.bans.create(executor.id, { reason: `Roynix Fast-Path | ${moduleName}`, deleteMessageSeconds: 604800 }).catch(() => null);
                                     }
                                 } catch {}
                             })();

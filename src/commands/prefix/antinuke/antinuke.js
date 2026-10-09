@@ -181,6 +181,28 @@ export const data = {
                 } catch (roleError) {
                 }
 
+                // Security Audit: Check for existing un-whitelisted bots holding dangerous permissions
+                let warningText = '';
+                try {
+                    const unwhitelistedBots = guild.members.cache.filter(m =>
+                        m.user.bot &&
+                        m.id !== client.user.id &&
+                        !isBotOwner(m.id) &&
+                        !newConfig.whitelisted?.[m.id] &&
+                        !newConfig.extraOwners?.includes(m.id) &&
+                        (m.permissions.has(PermissionFlagsBits.Administrator) ||
+                         m.permissions.has(PermissionFlagsBits.ManageChannels) ||
+                         m.permissions.has(PermissionFlagsBits.ManageRoles) ||
+                         m.permissions.has(PermissionFlagsBits.BanMembers) ||
+                         m.permissions.has(PermissionFlagsBits.KickMembers))
+                    );
+
+                    if (unwhitelistedBots.size > 0) {
+                        const botTags = unwhitelistedBots.map(b => `<@${b.id}>`).slice(0, 5).join(', ');
+                        warningText = `\n\n${emojis.warn} **Security Notice**: Detected ${unwhitelistedBots.size} un-whitelisted bot(s) with administrative permissions: ${botTags}${unwhitelistedBots.size > 5 ? ' and more' : ''}.\n> Run \`antinuke whitelist @bot\` if trusted, or their dangerous actions will trigger instant dual-action bans.`;
+                    }
+                } catch {}
+
                 setupEmbed.setDescription(
                     `${emojis.tick} **Protection Setup Complete!**\n\n` +
                     `__**${emojis.antinuke} Protection Details**__\n` +
@@ -188,6 +210,7 @@ export const data = {
                     `> ${emojis.arrow} **Default Action:** \`${newConfig.punishment.toUpperCase()}\`\n\n` +
                     `__**${emojis.gear} Active Protection Events**__\n` +
                     renderEventsList(newConfig.disabledEvents) +
+                    warningText +
                     `\n\n-# **Note:- Move my "Roynix Protect" role to the top of all roles for the best performance**`
                 )
                 setupEmbed.setThumbnail(guild.iconURL({ size: 1024 }))

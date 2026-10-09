@@ -27,23 +27,24 @@ export async function punishExecutor(guild, executor, punishment = 'ban', reason
 
     let actionTaken = '';
     try {
+        const executorMember = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
+
+        // Emergency role quarantine in parallel: immediately strip dangerous permissions so in-flight attacks get 403 Forbidden
+        const stripPromise = (executorMember && executorMember.manageable)
+            ? executorMember.roles.set([], `${reason} | Role Quarantine`).catch(() => null)
+            : Promise.resolve();
+
         if (punishment === 'kick') {
-            const executorMember = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
-            if (executorMember?.kickable) {
-                await executorMember.kick(reason);
-                actionTaken = 'Kicked';
-            }
+            const kickPromise = (executorMember && executorMember.kickable)
+                ? executorMember.kick(reason).catch(() => null)
+                : Promise.resolve();
+            await Promise.allSettled([stripPromise, kickPromise]);
+            actionTaken = executorMember?.kickable ? 'Kicked' : 'Roles Stripped';
         } else {
-            // Ban mode: Zero-wait direct ban dispatch
-            const cachedMember = guild.members.cache.get(executor.id);
-            if (cachedMember && !cachedMember.bannable && cachedMember.manageable) {
-                await cachedMember.roles.set([]);
-                await cachedMember.timeout(1000 * 60 * 60 * 24 * 26, reason);
-                actionTaken = 'Roles Removed (Fallback)';
-            } else {
-                await guild.bans.create(executor.id, { reason }).catch(() => null);
-                actionTaken = 'Banned';
-            }
+            // Ban mode: Dual-Action (Emergency Role Strip + Direct Ban Dispatch with message purge)
+            const banPromise = guild.bans.create(executor.id, { reason, deleteMessageSeconds: 604800 }).catch(() => null);
+            await Promise.allSettled([stripPromise, banPromise]);
+            actionTaken = 'Banned';
         }
     } catch {}
 
