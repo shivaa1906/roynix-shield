@@ -23,17 +23,25 @@ export const data = {
         const owner = isBotOwner(message.author.id);
         const prefix = config.prefix;
         const noprefixDB = client.noprefixDB;
-        const guildPrefix = (await client.prefixDB.get(`${message.guild.id}`).catch(() => null)) || prefix;
-
-        await handleAutoReact(message, client);
         if (await handleMediaOnly(message, client)) return;
-        await handleMessage(message, client);
-        await handleAutoResponder(message, client);
+
+        // Concurrently run background module handlers without blocking command parsing (0ms overhead)
+        Promise.allSettled([
+            handleAutoReact(message, client),
+            handleMessage(message, client),
+            handleAutoResponder(message, client)
+        ]);
 
         if (!client.cooldowns) client.cooldowns = new Collection();
         if (!client.cooldownLocks) client.cooldownLocks = new Collection();
 
-        const npData = await noprefixDB.get(`noprefix_${message.author.id}`);
+        // 0ms parallel in-memory lookup for guild prefix & noprefix permissions
+        const [guildPrefixVal, npData] = await Promise.all([
+            client.prefixDB.get(`${message.guild.id}`).catch(() => null),
+            noprefixDB.get(`noprefix_${message.author.id}`).catch(() => null)
+        ]);
+        const guildPrefix = guildPrefixVal || prefix;
+
         const isEnabled = npData?.enabled;
         const isExpired = npData?.endTimestamp && Date.now() > npData.endTimestamp;
         const hasNoprefix = isEnabled && (npData.plan === 'Lifetime' || !isExpired);

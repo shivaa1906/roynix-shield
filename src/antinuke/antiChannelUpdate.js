@@ -38,10 +38,10 @@ export const data = {
             ) return;
 
             const trackingKey = `${guild.id}_antiChannelUpdate_${newChannel.id}_${executor.id}`;
-            const actionTaken = await punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Channel Update', client, trackingKey);
+            const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Channel Update', client, trackingKey);
 
-            let reverted = false;
-            if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
+            const revertPromise = (async () => {
+                if (antinukeData?.disabledEvents?.includes('autoRecovery')) return false;
                 try {
                     const baseOptions = {
                         name: oldChannel.name,
@@ -58,8 +58,7 @@ export const data = {
                                 nsfw: oldChannel.nsfw,
                                 rateLimitPerUser: oldChannel.rateLimitPerUser,
                             });
-                            reverted = true;
-                            break;
+                            return true;
 
                         case ChannelType.GuildVoice:
                         case ChannelType.GuildStageVoice:
@@ -68,8 +67,7 @@ export const data = {
                                 bitrate: oldChannel.bitrate,
                                 userLimit: oldChannel.userLimit,
                             });
-                            reverted = true;
-                            break;
+                            return true;
 
                         case ChannelType.GuildForum:
                             await newChannel.edit({
@@ -77,13 +75,11 @@ export const data = {
                                 defaultSortOrder: oldChannel.defaultSortOrder,
                                 rateLimitPerUser: oldChannel.rateLimitPerUser,
                             });
-                            reverted = true;
-                            break;
+                            return true;
 
                         case ChannelType.GuildCategory:
                             await newChannel.edit(baseOptions);
-                            reverted = true;
-                            break;
+                            return true;
 
                         case ChannelType.GuildMedia:
                             await newChannel.edit({
@@ -91,16 +87,18 @@ export const data = {
                                 nsfw: oldChannel.nsfw,
                                 rateLimitPerUser: oldChannel.rateLimitPerUser,
                             });
-                            reverted = true;
-                            break;
+                            return true;
 
                         default:
                             await newChannel.edit(baseOptions);
-                            reverted = true;
-                            break;
+                            return true;
                     }
-                } catch {}
-            }
+                } catch {
+                    return false;
+                }
+            })();
+
+            const [actionTaken, reverted] = await Promise.all([punishPromise, revertPromise]);
 
             const logChannelId = antinukeData.logsChannel;
             if (logChannelId) {

@@ -45,26 +45,29 @@ import {
         ) return;
   
         const trackingKey = `${guild.id}_antiMemberUpdate_${newMember.id}_${executor.id}`;
-        const actionTaken = await punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Member Update', client, trackingKey);
-  
-        let reverted = false;
-        if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
+        const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Member Update', client, trackingKey);
+
+        const revertPromise = (async () => {
+          if (antinukeData?.disabledEvents?.includes('autoRecovery')) return false;
           try {
-          if (roleChanged) {
-            await newMember.roles.set(oldMember.roles.cache, 'Roynix Antinuke System | Reverting Role Update');
+            const tasks = [];
+            if (roleChanged) {
+              tasks.push(newMember.roles.set(oldMember.roles.cache, 'Roynix Antinuke System | Reverting Role Update'));
+            }
+            if (nicknameChanged) {
+              tasks.push(newMember.setNickname(oldMember.nickname || null, 'Roynix Antinuke System | Reverting Nickname Change'));
+            }
+            if (timeoutChanged) {
+              tasks.push(newMember.timeout(null, 'Roynix Antinuke System | Reverting Timeout'));
+            }
+            await Promise.all(tasks);
+            return true;
+          } catch {
+            return false;
           }
-  
-          if (nicknameChanged) {
-            await newMember.setNickname(oldMember.nickname || null, 'Roynix Antinuke System | Reverting Nickname Change');
-          }
-  
-          if (timeoutChanged) {
-            await newMember.timeout(null, 'Roynix Antinuke System | Reverting Timeout');
-          }
-  
-          reverted = true;
-        } catch (err) {}
-        }
+        })();
+
+        const [actionTaken, reverted] = await Promise.all([punishPromise, revertPromise]);
   
         if (logChannelId) {
           const logChannel = guild.channels.cache.get(logChannelId) || await guild.channels.fetch(logChannelId).catch(() => null);

@@ -34,16 +34,20 @@ export const data = {
             ) return;
 
             const trackingKey = `${guild.id}_antiBan_${user.id}_${executor.id}`;
-            const actionTaken = await punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Ban', client, trackingKey);
-
-            let unbanned = false;
-            if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
-                try {
-                    await guild.bans.remove(user.id, 'Roynix Antinuke System | Unauthorized Ban');
-                    unbanned = true;
-                } catch (err) {
+            const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Ban', client, trackingKey);
+            const unbanPromise = (async () => {
+                if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
+                    try {
+                        await guild.bans.remove(user.id, 'Roynix Antinuke System | Unauthorized Ban');
+                        return true;
+                    } catch {
+                        return false;
+                    }
                 }
-            }
+                return false;
+            })();
+
+            const [actionTaken, unbanned] = await Promise.all([punishPromise, unbanPromise]);
 
             const logChannelId = antinukeData?.logsChannel;
             if (logChannelId) {
