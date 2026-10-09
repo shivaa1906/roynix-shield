@@ -161,7 +161,7 @@ import {
               )
               .setTimestamp();
   
-            await logChannel.send({ embeds: [embed] }).catch(() => null);
+            logChannel.send({ embeds: [embed] }).catch(() => null);
           }
         }
       });

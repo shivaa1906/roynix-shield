@@ -51,9 +51,10 @@ async function getAuditExecutor(guild, type, targetId, client) {
 
             const restPromise = (async () => {
                 if (guild.members.me && !guild.members.me.permissions.has(PermissionFlagsBits.ViewAuditLog)) return null;
-                const fetchedLogs = await guild.fetchAuditLogs({ type, limit: 1 }).catch(() => null);
-                const entry = fetchedLogs?.entries?.find(log => targetId ? log.target?.id === targetId : true);
-                if (entry && (now - entry.createdTimestamp < 6000)) {
+                const fetchedLogs = await guild.fetchAuditLogs({ type, limit: 6 }).catch(() => null);
+                if (!fetchedLogs?.entries) return null;
+                const entry = fetchedLogs.entries.find(log => targetId ? (log.target?.id === targetId || log.targetId === targetId) : true);
+                if (entry && (now - entry.createdTimestamp < 8000)) {
                     return entry.executor;
                 }
                 return null;
@@ -62,7 +63,7 @@ async function getAuditExecutor(guild, type, targetId, client) {
             const winner = await Promise.race([
                 wsPromise.then(res => res ? res : new Promise(() => {})),
                 restPromise.then(res => res ? res : new Promise(() => {})),
-                new Promise(resolve => setTimeout(() => resolve(null), 35))
+                new Promise(resolve => setTimeout(() => resolve(null), 350))
             ]);
 
             if (winner) return winner;

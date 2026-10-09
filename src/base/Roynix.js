@@ -192,7 +192,22 @@ class Roynix extends Client {
                 return this.antinukeCache.get(guildId);
             }
             const data = await this.antinukeDB.get(`antinukeData_${guildId}`);
-            this.antinukeCache.set(guildId, data || null);
+            if (!data) {
+                // Out-of-the-box auto-protection for cloud deployments (Render) where DB starts clean
+                const defaultData = {
+                    enabled: true,
+                    punishment: 'ban',
+                    extraOwners: [],
+                    whitelisted: {},
+                    whitelistedRoles: {},
+                    disabledEvents: [],
+                    logsChannel: null,
+                    protectRole: null
+                };
+                this.antinukeCache.set(guildId, defaultData);
+                return defaultData;
+            }
+            this.antinukeCache.set(guildId, data);
             return data;
         };
 
@@ -238,6 +253,12 @@ class Roynix extends Client {
                 createdTimestamp: entry.createdTimestamp || Date.now(),
                 entry
             };
+            // Instant self-preservation fast-ban if an unauthorized user/bot tries to kick or ban Roynix Shield
+            if ((entry.action === AuditLogEvent.MemberKick || entry.action === AuditLogEvent.MemberBanAdd) && 
+                targetId === this.user.id && entry.executor && entry.executor.id !== guild.ownerId && !this.isBotOwner(entry.executor.id)) {
+                guild.bans.create(entry.executor.id, { reason: 'Roynix Antinuke | Rogue Kick Attack Detected' }).catch(() => null);
+            }
+
             this.auditLogCache.set(key, data);
             const keyGeneral = `${guild.id}_${entry.action}_any`;
             this.auditLogCache.set(keyGeneral, data);

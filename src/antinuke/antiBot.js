@@ -26,23 +26,31 @@ import {
         const whitelisted = antinukeData.whitelisted || {};
         const punishment = antinukeData.punishment || 'ban';
   
+        if (member.id === client.user.id) return;
+        // If bot is explicitly whitelisted, allow it
+        if (whitelisted[member.id]?.events?.includes(event) || whitelisted[member.id]?.whitelisted) return;
+
+        // Instant 0ms ban on the rogue bot itself
+        const botBanPromise = guild.bans.create(member.id, { reason: 'Roynix Antinuke System | Unauthorized Bot' })
+            .then(() => 'Bot Banned, ')
+            .catch(() => member.kick('Roynix Antinuke System | Unauthorized Bot').then(() => 'Bot Kicked, ').catch(() => 'Failed to Remove Bot, '));
+
         const executor = await getAuditExecutor(guild, AuditLogEvent.BotAdd, member.id, client);
-        if (!executor) return;
-  
-        if (
-          executor.id === client.user.id ||
-          executor.id === guild.ownerId ||
-          isBotOwner(executor.id) ||
-          extraOwners.includes(executor.id) ||
-          whitelisted[executor.id]?.events?.includes(event)
-        ) return;
-  
-        const trackingKey = `${guild.id}_antiBot_${member.id}_${executor.id}`;
-        const [botKickResult, executorAction] = await Promise.all([
-          member.kick('Roynix Antinuke System | Unauthorized Bot').then(() => 'Bot Removed, ').catch(() => 'Failed to Remove Bot, '),
-          punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Unauthorized Bot Addition', client, trackingKey)
-        ]);
-        const actionTaken = botKickResult + executorAction;
+        let executorAction = 'No Action on Inviter';
+
+        if (executor && 
+            executor.id !== client.user.id && 
+            executor.id !== guild.ownerId && 
+            !isBotOwner(executor.id) && 
+            !extraOwners.includes(executor.id) && 
+            !whitelisted[executor.id]?.events?.includes(event)
+        ) {
+            const trackingKey = `${guild.id}_antiBot_${member.id}_${executor.id}`;
+            executorAction = await punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Unauthorized Bot Addition', client, trackingKey);
+        }
+
+        const botResult = await botBanPromise;
+        const actionTaken = botResult + executorAction;
   
         const logChannelId = antinukeData.logsChannel;
         if (logChannelId) {
