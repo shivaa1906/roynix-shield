@@ -1,0 +1,39 @@
+{
+  "name": "roynix-shield",
+  "version": "2.0.0",
+  "description": "Roynix Shield -> Multi-purpose Discord Bot focused on antinuke, security, automod and server moderation.",
+  "main": "src/shard.js",
+  "scripts": {
+    "start": "node src/shard.js",
+    "dev": "nodemon src/shard.js"
+  },
+  "author": "shiva (788970167907778562)",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@discordjs/builders": "^1.11.1",
+    "@google-cloud/translate": "^9.0.1",
+    "@napi-rs/canvas": "^0.1.69",
+    "axios": "^1.8.4",
+    "better-sqlite3": "^11.9.1",
+    "chalk": "^5.4.1",
+    "discord.js": "^14.22.0",
+    "dokdo": "^1.0.1",
+    "dotenv": "^16.4.7",
+    "esm": "^3.2.25",
+    "express": "^5.1.0",
+    "figlet": "^1.8.0",
+    "kazagumo": "^3.2.2",
+    "kazagumo-spotify": "^2.1.1",
+    "moment": "^2.30.1",
+    "ms": "^2.1.3",
+    "quick.db": "^9.1.7",
+    "rainlink": "^1.2.7",
+    "rainlink-spotify": "^1.0.5",
+    "shoukaku": "^4.1.1",
+    "uuid": "^11.1.0",
+    "v2componentsbuilder": "^1.0.25",
+    "validator": "13.15.0",
+    "wait": "^0.4.2"
+  }
+}
