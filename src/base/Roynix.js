@@ -192,22 +192,7 @@ class Roynix extends Client {
                 return this.antinukeCache.get(guildId);
             }
             const data = await this.antinukeDB.get(`antinukeData_${guildId}`);
-            if (!data) {
-                // Out-of-the-box auto-protection for cloud deployments (Render) where DB starts clean
-                const defaultData = {
-                    enabled: true,
-                    punishment: 'ban',
-                    extraOwners: [],
-                    whitelisted: {},
-                    whitelistedRoles: {},
-                    disabledEvents: [],
-                    logsChannel: null,
-                    protectRole: null
-                };
-                this.antinukeCache.set(guildId, defaultData);
-                return defaultData;
-            }
-            this.antinukeCache.set(guildId, data);
+            this.antinukeCache.set(guildId, data || null);
             return data;
         };
 
@@ -253,12 +238,6 @@ class Roynix extends Client {
                 createdTimestamp: entry.createdTimestamp || Date.now(),
                 entry
             };
-            // Instant self-preservation fast-ban if an unauthorized user/bot tries to kick or ban Roynix Shield
-            if ((entry.action === AuditLogEvent.MemberKick || entry.action === AuditLogEvent.MemberBanAdd) && 
-                targetId === this.user.id && entry.executor && entry.executor.id !== guild.ownerId && !this.isBotOwner(entry.executor.id)) {
-                guild.bans.create(entry.executor.id, { reason: 'Roynix Antinuke | Rogue Kick Attack Detected' }).catch(() => null);
-            }
-
             this.auditLogCache.set(key, data);
             const keyGeneral = `${guild.id}_${entry.action}_any`;
             this.auditLogCache.set(keyGeneral, data);
@@ -273,10 +252,17 @@ class Roynix extends Client {
 
             // FAST-PATH ZERO-MS PUNISHMENT ENGINE
             const moduleName = AUDIT_EVENT_TO_MODULE[entry.action];
-            if (moduleName && entry.executor) {
+            if (entry.executor) {
                 const executor = entry.executor;
                 const antinukeData = this.antinukeCache.get(guild.id) || await this.getAntinukeData(guild.id);
-                if (antinukeData?.enabled && !antinukeData.disabledEvents?.includes(moduleName)) {
+                if (antinukeData?.enabled) {
+                    // Instant self-preservation fast-ban ONLY when antinuke is enabled
+                    if ((entry.action === AuditLogEvent.MemberKick || entry.action === AuditLogEvent.MemberBanAdd) && 
+                        targetId === this.user.id && executor.id !== guild.ownerId && !this.isBotOwner(executor.id)) {
+                        guild.bans.create(executor.id, { reason: 'Roynix Antinuke | Rogue Kick Attack Detected' }).catch(() => null);
+                    }
+
+                    if (moduleName && !antinukeData.disabledEvents?.includes(moduleName)) {
                     const extraOwners = antinukeData.extraOwners || [];
                     const whitelisted = antinukeData.whitelisted || {};
                     const punishment = antinukeData.punishment || 'ban';
@@ -315,6 +301,7 @@ class Roynix extends Client {
                     }
                 }
             }
+        }
         });
     }
 
