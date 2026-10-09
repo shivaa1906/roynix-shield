@@ -22,7 +22,9 @@ export const antinukeModules = [
     { name: 'Anti Emoji Delete', key: 'antiEmojiDelete', aliases: ['antiemojidelete', 'emojidelete'], description: 'Prevents unauthorized emoji deletion' },
     { name: 'Anti Prune', key: 'antiPrune', aliases: ['prune', 'antiprune'], description: 'Prevents unauthorized member pruning' },
     { name: 'Anti Ping', key: 'antiPing', aliases: ['ping', 'antiping', 'everyone', 'here'], description: 'Prevents unauthorized mass mentions' },
-    { name: 'Auto Recovery', key: 'autoRecovery', aliases: ['recovery', 'autorecovery', 'restore'], description: 'Automatically restores deleted/modified channels & roles' }
+    { name: 'Auto Recovery', key: 'autoRecovery', aliases: ['recovery', 'autorecovery', 'restore'], description: 'Automatically restores deleted/modified channels & roles' },
+    { name: 'Zero-Trust Quarantine', key: 'zeroTrustQuarantine', aliases: ['zerotrust', 'quarantine', 'zt'], description: 'Automatically revokes administrative permissions from unwhitelisted bots' },
+    { name: 'Circuit Breaker', key: 'circuitBreaker', aliases: ['circuit', 'breaker', 'lockdown'], description: 'Automated emergency server lockdown and multi-bot quarantine during raid bursts' }
 ];
 
 /**

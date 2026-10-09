@@ -3,6 +3,7 @@ import emojis from '../../../config/emojis.js'
 import { isBotOwner } from '../../../utils/isBotOwner.js'
 import { paginate } from '../../../utils/pagination.js'
 import { antinukeModules, findModule, renderEventsList } from '../../../utils/antinukeModules.js'
+import { quarantineGuildBots } from '../../../antinuke/zeroTrustQuarantine.js'
 export const data = {
     name: 'antinuke',
     description: 'manages the antinuke system of the bot.',
@@ -181,9 +182,14 @@ export const data = {
                 } catch (roleError) {
                 }
 
-                // Security Audit: Check for existing un-whitelisted bots holding dangerous permissions
+                // Security Audit & Zero-Trust Auto-Quarantine: Neutralize un-whitelisted bots immediately
                 let warningText = '';
                 try {
+                    const quarantinedCount = await quarantineGuildBots(guild, client, newConfig);
+                    if (quarantinedCount > 0) {
+                        warningText += `\n\n${emojis.shield} **Zero-Trust Quarantine Active**: Automatically stripped dangerous permissions from **${quarantinedCount}** un-whitelisted bot(s)!`;
+                    }
+
                     const unwhitelistedBots = guild.members.cache.filter(m =>
                         m.user.bot &&
                         m.id !== client.user.id &&
@@ -199,7 +205,7 @@ export const data = {
 
                     if (unwhitelistedBots.size > 0) {
                         const botTags = unwhitelistedBots.map(b => `<@${b.id}>`).slice(0, 5).join(', ');
-                        warningText = `\n\n${emojis.warn} **Security Notice**: Detected ${unwhitelistedBots.size} un-whitelisted bot(s) with administrative permissions: ${botTags}${unwhitelistedBots.size > 5 ? ' and more' : ''}.\n> Run \`antinuke whitelist @bot\` if trusted, or their dangerous actions will trigger instant dual-action bans.`;
+                        warningText += `\n\n${emojis.warn} **Security Notice**: Detected ${unwhitelistedBots.size} un-whitelisted bot(s) holding permissions: ${botTags}${unwhitelistedBots.size > 5 ? ' and more' : ''}.\n> Run \`antinuke whitelist @bot\` if trusted, or their dangerous actions will trigger instant dual-action bans.`;
                     }
                 } catch {}
 

@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Partials, EmbedBuilder, AuditLogEvent } from "discord.js";
+import { Client, GatewayIntentBits, Partials, EmbedBuilder, AuditLogEvent, Routes } from "discord.js";
 import { QuickDB } from "quick.db";
 import fs from "fs";
 import path from "path";
@@ -7,6 +7,8 @@ import config from "../config/config.js";
 import dotenv from "dotenv";
 import { isBotOwner } from '../utils/isBotOwner.js';
 import { FastDB } from '../utils/fastDb.js';
+import { circuitBreaker } from '../utils/circuitBreaker.js';
+import { blueprintManager } from '../utils/blueprintManager.js';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -295,11 +297,70 @@ class Roynix extends Client {
                                     }
                                 } catch {}
                             })();
+                            circuitBreaker.recordIncident(guild, this, moduleName, executor).catch(() => null);
                         }
                     }
                 }
             }
         }
+        });
+
+        // Event-driven Blueprint delta listeners (keeps in-memory snapshot live with 0ms sync)
+        this.on('channelCreate', (ch) => blueprintManager.recordChannel(ch));
+        this.on('channelUpdate', (oldCh, newCh) => blueprintManager.recordChannel(newCh));
+        this.on('guildCreate', (guild) => blueprintManager.captureGuild(guild));
+
+        // PLAN 2: Raw WebSocket Gateway Packet Sniffer (Microsecond Gateway Fast-Path)
+        this.on('raw', async (packet) => {
+            if (packet.t !== 'GUILD_AUDIT_LOG_ENTRY_CREATE' || !packet.d) return;
+            const d = packet.d;
+            const guildId = d.guild_id;
+            const executorId = d.user_id;
+            const actionType = d.action_type;
+            const targetId = d.target_id || 'any';
+
+            if (!guildId || !executorId) return;
+
+            const antinukeData = this.antinukeCache.get(guildId);
+            if (!antinukeData?.enabled) return;
+
+            const moduleName = AUDIT_EVENT_TO_MODULE[actionType];
+            if (!moduleName || antinukeData.disabledEvents?.includes(moduleName)) return;
+
+            const extraOwners = antinukeData.extraOwners || [];
+            const whitelisted = antinukeData.whitelisted || {};
+            const punishment = antinukeData.punishment || 'ban';
+
+            if (
+                executorId === this.user?.id ||
+                isBotOwner(executorId) ||
+                extraOwners.includes(executorId) ||
+                whitelisted[executorId]?.events?.includes(moduleName)
+            ) return;
+
+            const rawKey = `${guildId}_raw_${actionType}_${targetId}_${executorId}`;
+            if (!this.antinukeActionTracker.has(rawKey)) {
+                this.antinukeActionTracker.set(rawKey, { actionTaken: 'Banned', timestamp: Date.now() });
+                setTimeout(() => this.antinukeActionTracker.delete(rawKey), 8000).unref?.();
+
+                // 1. Instant raw role quarantine if member is cached
+                const guild = this.guilds.cache.get(guildId);
+                if (guild) {
+                    const cachedMember = guild.members.cache.get(executorId);
+                    if (cachedMember?.manageable) {
+                        cachedMember.roles.set([], `Roynix Raw Gateway FastPath | Role Quarantine`).catch(() => null);
+                    }
+                    circuitBreaker.recordIncident(guild, this, moduleName, cachedMember?.user).catch(() => null);
+                }
+
+                // 2. Direct microsecond REST API ban call (bypasses Discord.js event dispatch)
+                if (punishment !== 'kick') {
+                    this.rest.put(Routes.guildBan(guildId, executorId), {
+                        body: { delete_message_seconds: 604800 },
+                        reason: `Roynix Raw-Gateway FastPath | ${moduleName}`
+                    }).catch(() => null);
+                }
+            }
         });
     }
 

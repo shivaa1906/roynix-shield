@@ -7,6 +7,8 @@ import {
   import emojis from '../config/emojis.js';
   import { getAuditExecutor } from '../utils/getExecutor.js';
   import { punishExecutor } from '../utils/punishExecutor.js';
+  import { blueprintManager } from '../utils/blueprintManager.js';
+  import { circuitBreaker } from '../utils/circuitBreaker.js';
   
   export const data = {
     /**
@@ -39,110 +41,79 @@ import {
   
         const trackingKey = `${guild.id}_antiChannelDelete_${channel.id}_${executor.id}`;
         const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Channel Delete', client, trackingKey);
-  
+
+        // Notify circuit breaker of destructive action burst
+        circuitBreaker.recordIncident(guild, client, 'Anti Channel Delete', executor).catch(() => null);
+
         const recoverPromise = (async () => {
           let recreated = false;
           if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
             try {
-            switch (channel.type) {
-                case ChannelType.GuildText:
-                  await guild.channels.create({
-                    name: channel.name,
-                    type: ChannelType.GuildText,
-                    topic: channel.topic || undefined,
-                    nsfw: channel.nsfw,
-                    rateLimitPerUser: channel.rateLimitPerUser,
-                    position: channel.rawPosition,
-                    parent: channel.parentId,
-                    permissionOverwrites: channel.permissionOverwrites.cache,
-                    reason: 'Roynix Antinuke System | Channel Recovered'
-                  });
-                  recreated = true;
-                  break;
-              
-                case ChannelType.GuildVoice:
-                  await guild.channels.create({
-                    name: channel.name,
-                    type: ChannelType.GuildVoice,
-                    bitrate: channel.bitrate,
-                    userLimit: channel.userLimit,
-                    rtcRegion: channel.rtcRegion,
-                    videoQualityMode: channel.videoQualityMode,
-                    position: channel.rawPosition,
-                    parent: channel.parentId,
-                    permissionOverwrites: channel.permissionOverwrites.cache,
-                    reason: 'Roynix Antinuke System | Channel Recovered'
-                  });
-                  recreated = true;
-                  break;
-              
-                case ChannelType.GuildForum:
-                  await guild.channels.create({
-                    name: channel.name,
-                    type: ChannelType.GuildForum,
-                    topic: channel.topic || undefined,
-                    position: channel.rawPosition,
-                    parent: channel.parentId,
-                    permissionOverwrites: channel.permissionOverwrites.cache,
-                    reason: 'Roynix Antinuke System | Channel Recovered',
-                    availableTags: channel.availableTags,
-                    defaultReactionEmoji: channel.defaultReactionEmoji,
-                    defaultThreadRateLimitPerUser: channel.defaultThreadRateLimitPerUser,
-                    defaultSortOrder: channel.defaultSortOrder
-                  });
-                  recreated = true;
-                  break;
-              
-                case ChannelType.GuildAnnouncement:
-                  await guild.channels.create({
-                    name: channel.name,
-                    type: ChannelType.GuildAnnouncement,
-                    topic: channel.topic || undefined,
-                    nsfw: channel.nsfw,
-                    position: channel.rawPosition,
-                    parent: channel.parentId,
-                    permissionOverwrites: channel.permissionOverwrites.cache,
-                    reason: 'Roynix Antinuke System | Channel Recovered'
-                  });
-                  recreated = true;
-                  break;
-              
-                case ChannelType.GuildStageVoice:
-                  await guild.channels.create({
-                    name: channel.name,
-                    type: ChannelType.GuildStageVoice,
-                    bitrate: channel.bitrate,
-                    userLimit: channel.userLimit,
-                    rtcRegion: channel.rtcRegion,
-                    position: channel.rawPosition,
-                    parent: channel.parentId,
-                    permissionOverwrites: channel.permissionOverwrites.cache,
-                    reason: 'Roynix Antinuke System | Channel Recovered'
-                  });
-                  recreated = true;
-                  break;
-              
-                case ChannelType.GuildCategory:
-                  await guild.channels.create({
-                    name: channel.name,
-                    type: ChannelType.GuildCategory,
-                    position: channel.rawPosition,
-                    permissionOverwrites: channel.permissionOverwrites.cache,
-                    reason: 'Roynix Antinuke System | Channel Recovered'
-                  });
-                  recreated = true;
-                  break;
-              
-                default:
-                  console.log('Unhandled channel type:', channel.type);
-                  break;
+              // 1. Try atomic hierarchical blueprint restoration (preserves parent categories & exact permissions)
+              recreated = await blueprintManager.restoreChannelHierarchical(guild, channel);
+
+              // 2. Fallback basic recreation if blueprint manager did not complete
+              if (!recreated) {
+                switch (channel.type) {
+                  case ChannelType.GuildText:
+                    await guild.channels.create({
+                      name: channel.name,
+                      type: ChannelType.GuildText,
+                      topic: channel.topic || undefined,
+                      nsfw: channel.nsfw,
+                      rateLimitPerUser: channel.rateLimitPerUser,
+                      position: channel.rawPosition,
+                      parent: channel.parentId,
+                      permissionOverwrites: channel.permissionOverwrites.cache,
+                      reason: 'Roynix Antinuke System | Channel Recovered'
+                    });
+                    recreated = true;
+                    break;
+
+                  case ChannelType.GuildVoice:
+                    await guild.channels.create({
+                      name: channel.name,
+                      type: ChannelType.GuildVoice,
+                      bitrate: channel.bitrate,
+                      userLimit: channel.userLimit,
+                      position: channel.rawPosition,
+                      parent: channel.parentId,
+                      permissionOverwrites: channel.permissionOverwrites.cache,
+                      reason: 'Roynix Antinuke System | Channel Recovered'
+                    });
+                    recreated = true;
+                    break;
+
+                  case ChannelType.GuildCategory:
+                    await guild.channels.create({
+                      name: channel.name,
+                      type: ChannelType.GuildCategory,
+                      position: channel.rawPosition,
+                      permissionOverwrites: channel.permissionOverwrites.cache,
+                      reason: 'Roynix Antinuke System | Channel Recovered'
+                    });
+                    recreated = true;
+                    break;
+
+                  default:
+                    await guild.channels.create({
+                      name: channel.name,
+                      type: channel.type,
+                      position: channel.rawPosition,
+                      parent: channel.parentId,
+                      permissionOverwrites: channel.permissionOverwrites.cache,
+                      reason: 'Roynix Antinuke System | Channel Recovered'
+                    });
+                    recreated = true;
+                    break;
+                }
+              }
+            } catch (err) {
+              recreated = false;
             }
-        } catch(err) {
-            recreated = false;
           }
-        }
-        return recreated;
-      })();
+          return recreated;
+        })();
 
       const [actionTaken, recreated] = await Promise.all([punishPromise, recoverPromise]);
 
