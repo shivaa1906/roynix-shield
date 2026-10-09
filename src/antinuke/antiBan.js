@@ -9,8 +9,10 @@ export const data = {
      * @param {import('../base/Roynix').Roynix} client 
      */
     async execute(client) {
-        client.on('guildBanAdd', async (guild, user) => {
-            if (!guild) return;
+        client.on('guildBanAdd', async (ban) => {
+            const guild = ban?.guild;
+            const user = ban?.user;
+            if (!guild || !user) return;
 
             const event = 'antiBan';
 
