@@ -10,14 +10,7 @@ import { FastDB } from '../utils/fastDb.js';
 import { circuitBreaker } from '../utils/circuitBreaker.js';
 import { blueprintManager } from '../utils/blueprintManager.js';
 import { quarantineGuildBots } from '../antinuke/zeroTrustQuarantine.js';
-import https from "https";
 dotenv.config();
-
-const httpsAgent = new https.Agent({
-    keepAlive: true,
-    keepAliveMsecs: 30000,
-    maxSockets: 100,
-});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,10 +49,9 @@ class Roynix extends Client {
                 Partials.GuildScheduledEvent,
             ],
             rest: {
-                agent: httpsAgent,
                 offset: 0,
-                retries: 1,
-                timeout: 8000,
+                retries: 2,
+                timeout: 10000,
             },
             ws: {
                 properties: {
