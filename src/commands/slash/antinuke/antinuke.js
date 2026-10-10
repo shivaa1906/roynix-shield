@@ -131,7 +131,7 @@ export const data = {
             const setupEmbed = new EmbedBuilder()
                 .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
                 .setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.loading} Checking required permissions`)
+                    + `> ${emojis.loading} Checking required permissions & preparing protection role`)
                 .setColor(client.color)
                 .setFooter({ text: `Executed by ${interaction.user.username}`, iconURL: interaction.user.avatarURL({ size: 1024 }) })
                 .setThumbnail(guild.iconURL({ size: 1024 }));
@@ -145,14 +145,6 @@ export const data = {
                     + `${emojis.info} The bot requires administrator permissions to properly protect your server.`);
                 return interaction.editReply({ embeds: [setupEmbed] });
             }
-
-            await delay(800);
-
-            // Frame 2: Permission check passed & Creating protection role
-            setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                + `> ${emojis.tick} Permission check passed\n`
-                + `> ${emojis.loading} Creating protection role & configuring settings`);
-            await interaction.editReply({ embeds: [setupEmbed] }).catch(() => null);
 
             let protectRole = (antinukeData?.protectRole && guild.roles.cache.get(antinukeData.protectRole))
                 || guild.roles.cache.find(r => r.name === 'Roynix Protect' || r.name === 'Roynix Shield Protect');
@@ -192,9 +184,9 @@ export const data = {
                 }
             } catch (roleError) { }
 
-            await delay(900);
+            await delay(1200);
 
-            // Frame 3: Roles ready & configuration saved
+            // Intermediate Frame: Progress Animation
             setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
                 + `> ${emojis.tick} Permission check passed\n`
                 + `> ${emojis.tick} Created protection role (<@&${protectRole.id}>)\n`
@@ -224,9 +216,9 @@ export const data = {
                 }
             } catch {}
 
-            await delay(900);
+            await delay(1500);
 
-            // Final Frame: Complete!
+            // Final Frame: Complete with guaranteed retry so it never stays stuck
             setupEmbed.setDescription(
                 `${emojis.tick} **Protection Setup Complete!**\n\n` +
                 `__**${emojis.antinuke} Protection Details**__\n` +
@@ -237,7 +229,18 @@ export const data = {
                 warningText +
                 `\n\n-# **Note:- Move my "Roynix Protect" role to the top of all roles for the best performance**`
             );
-            await interaction.editReply({ embeds: [setupEmbed] }).catch(() => null);
+            setupEmbed.setThumbnail(guild.iconURL({ size: 1024 }));
+            setupEmbed.setColor(client.color);
+
+            let finalEdited = false;
+            for (let attempt = 0; attempt < 3 && !finalEdited; attempt++) {
+                try {
+                    await interaction.editReply({ embeds: [setupEmbed] });
+                    finalEdited = true;
+                } catch {
+                    await delay(1200);
+                }
+            }
         }
 
         else if (subcommand === 'disable') {

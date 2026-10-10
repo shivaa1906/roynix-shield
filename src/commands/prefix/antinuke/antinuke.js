@@ -96,7 +96,7 @@ export const data = {
                 const setupEmbed = new EmbedBuilder()
                     .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
                     .setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                        + `> ${emojis.loading} Checking required permissions`
+                        + `> ${emojis.loading} Checking required permissions & preparing protection role`
                     )
                     .setColor(client.color)
                     .setFooter({ text: `Executed by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
@@ -112,15 +112,6 @@ export const data = {
                     )
                     return msg.edit({ embeds: [setupEmbed] }).catch(() => null)
                 }
-
-                await new Promise(resolve => setTimeout(resolve, 800))
-
-                // Frame 2: Permission check passed & Creating protection role
-                setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.loading} Creating protection role & configuring settings`
-                )
-                await msg.edit({ embeds: [setupEmbed] }).catch(() => null)
 
                 let protectRole = (antinukeData?.protectRole && guild.roles.cache.get(antinukeData.protectRole))
                     || guild.roles.cache.find(r => r.name === 'Roynix Protect' || r.name === 'Roynix Shield Protect')
@@ -162,9 +153,9 @@ export const data = {
                 } catch (roleError) {
                 }
 
-                await new Promise(resolve => setTimeout(resolve, 900))
+                await new Promise(resolve => setTimeout(resolve, 1200))
 
-                // Frame 3: Roles ready & configuration saved
+                // Intermediate Frame: Progress Animation
                 setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
                     + `> ${emojis.tick} Permission check passed\n`
                     + `> ${emojis.tick} Created protection role (<@&${protectRole.id}>)\n`
@@ -195,9 +186,9 @@ export const data = {
                     }
                 } catch {}
 
-                await new Promise(resolve => setTimeout(resolve, 900))
+                await new Promise(resolve => setTimeout(resolve, 1500))
 
-                // Final Frame: Complete!
+                // Final Frame: Complete with guaranteed retry so it never stays stuck
                 setupEmbed.setDescription(
                     `${emojis.tick} **Protection Setup Complete!**\n\n` +
                     `__**${emojis.antinuke} Protection Details**__\n` +
@@ -210,7 +201,16 @@ export const data = {
                 )
                 setupEmbed.setThumbnail(guild.iconURL({ size: 1024 }))
                 setupEmbed.setColor(client.color)
-                await msg.edit({ embeds: [setupEmbed] }).catch(() => null)
+
+                let finalEdited = false;
+                for (let attempt = 0; attempt < 3 && !finalEdited; attempt++) {
+                    try {
+                        await msg.edit({ embeds: [setupEmbed] });
+                        finalEdited = true;
+                    } catch {
+                        await new Promise(r => setTimeout(r, 1200));
+                    }
+                }
                 break;
             }
 
