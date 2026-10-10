@@ -310,6 +310,8 @@ class Roynix extends Client {
         // Event-driven Blueprint delta listeners (keeps in-memory snapshot live with 0ms sync)
         this.on('channelCreate', (ch) => blueprintManager.recordChannel(ch));
         this.on('channelUpdate', (oldCh, newCh) => blueprintManager.recordChannel(newCh));
+        this.on('roleCreate', (role) => blueprintManager.recordRole(role));
+        this.on('roleUpdate', (oldR, newR) => blueprintManager.recordRole(newR));
         this.on('guildCreate', (guild) => blueprintManager.captureGuild(guild));
 
         // PLAN 2: Raw WebSocket Gateway Packet Sniffer (Microsecond Gateway Fast-Path)
@@ -381,6 +383,16 @@ class Roynix extends Client {
                     body: { delete_message_seconds: 604800 },
                     reason: `Roynix Raw-Gateway FastPath | ${moduleName}`
                 }).catch(() => null);
+            }
+
+            // 3. Instant Gateway-Level Auto-Recovery for destroyed channels and roles
+            if (guild && !antinukeData.disabledEvents?.includes('autoRecovery')) {
+                if (actionType === AuditLogEvent.ChannelDelete) {
+                    const fallbackChannel = guild.channels.cache.get(targetId) || { id: targetId, name: 'recovered-channel' };
+                    blueprintManager.restoreChannelHierarchical(guild, fallbackChannel).catch(() => null);
+                } else if (actionType === AuditLogEvent.RoleDelete) {
+                    blueprintManager.restoreRole(guild, targetId).catch(() => null);
+                }
             }
         });
 
