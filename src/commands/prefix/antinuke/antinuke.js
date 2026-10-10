@@ -3,7 +3,6 @@ import emojis from '../../../config/emojis.js'
 import { isBotOwner } from '../../../utils/isBotOwner.js'
 import { paginate } from '../../../utils/pagination.js'
 import { antinukeModules, findModule, renderEventsList } from '../../../utils/antinukeModules.js'
-import { quarantineGuildBots } from '../../../antinuke/zeroTrustQuarantine.js'
 export const data = {
     name: 'antinuke',
     description: 'manages the antinuke system of the bot.',
@@ -93,40 +92,23 @@ export const data = {
                     })
                 }
 
-                const setupEmbed = new EmbedBuilder()
-                    .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
-                    .setDescription(`${emojis.antinuke} **Initializing protection setup...**`)
-                    .setColor(client.color)
-                    .setFooter({ text: `Executed by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
-                    .setThumbnail(guild.iconURL({ size: 1024 }))
-
-                const msg = await message.reply({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
-                setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.loading} Checking required permissions`
-                )
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
-                const me = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null)
+                const me = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
                 if (!me || !me.permissions.has(PermissionFlagsBits.Administrator)) {
-                    setupEmbed.setDescription(`${emojis.cross} **Setup failed**\n`
-                        + `> Missing required permission: \`Administrator\`\n\n`
-                        + `${emojis.info} The bot requires administrator permissions to properly protect your server.`
-                    )
-                    return msg.edit({ embeds: [setupEmbed] })
+                    return message.reply({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                .setDescription(`${emojis.cross} **Setup failed**\n`
+                                    + `> Missing required permission: \`Administrator\`\n\n`
+                                    + `${emojis.info} The bot requires administrator permissions to properly protect your server.`
+                                )
+                                .setColor(client.color)
+                        ]
+                    });
                 }
 
-                setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.loading} Creating protection role`
-                )
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
                 let protectRole = (antinukeData?.protectRole && guild.roles.cache.get(antinukeData.protectRole))
-                    || guild.roles.cache.find(r => r.name === 'Roynix Protect' || r.name === 'Roynix Shield Protect')
+                    || guild.roles.cache.find(r => r.name === 'Roynix Protect' || r.name === 'Roynix Shield Protect');
 
                 if (!protectRole) {
                     try {
@@ -135,23 +117,21 @@ export const data = {
                             color: '#ef9a12',
                             reason: 'Server protection system',
                             permissions: []
-                        })
+                        });
                     } catch (roleError) {
-                        setupEmbed.setDescription(`${emojis.cross} **Setup failed**\n`
-                            + `> Failed to create protection role: \`${roleError.message || 'Missing Permissions'}\`\n\n`
-                            + `${emojis.info} Please ensure the bot has permission to manage roles and the server has not reached the role limit.`
-                        )
-                        return msg.edit({ embeds: [setupEmbed] })
+                        return message.reply({
+                            embeds: [
+                                new EmbedBuilder()
+                                    .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                    .setDescription(`${emojis.cross} **Setup failed**\n`
+                                        + `> Failed to create protection role: \`${roleError.message || 'Missing Permissions'}\`\n\n`
+                                        + `${emojis.info} Please ensure the bot has permission to manage roles and the server has not reached the role limit.`
+                                    )
+                                    .setColor(client.color)
+                            ]
+                        });
                     }
                 }
-
-                setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.tick} Created protection role (<@&${protectRole.id}>)\n`
-                    + `> ${emojis.loading} Configuring system settings`
-                )
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
 
                 const newConfig = {
                     enabled: true,
@@ -162,68 +142,32 @@ export const data = {
                     logsChannel: antinukeData?.logsChannel || null,
                     punishment: antinukeData?.punishment || 'ban',
                     disabledEvents: antinukeData?.disabledEvents || []
-                }
-                await antinukeDB.set(`antinukeData_${guild.id}`, newConfig)
-
-                setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.tick} Created protection role (<@&${protectRole.id}>)\n`
-                    + `> ${emojis.tick} System configuration saved\n`
-                    + `> ${emojis.loading} Positioning protection role`
-                )
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
+                };
+                await antinukeDB.set(`antinukeData_${guild.id}`, newConfig);
 
                 try {
-                    const highestBotRolePos = me.roles?.highest?.position ?? 0
+                    const highestBotRolePos = me.roles?.highest?.position ?? 0;
                     if (highestBotRolePos > 1 && protectRole.position < highestBotRolePos - 1) {
-                        await protectRole.setPosition(highestBotRolePos - 1).catch(() => null)
-                    }
-                } catch (roleError) {
-                }
-
-                // Security Audit & Zero-Trust Auto-Quarantine: Neutralize un-whitelisted bots immediately
-                let warningText = '';
-                try {
-                    const quarantinedCount = await quarantineGuildBots(guild, client, newConfig);
-                    if (quarantinedCount > 0) {
-                        warningText += `\n\n${emojis.shield} **Zero-Trust Quarantine Active**: Automatically stripped dangerous permissions from **${quarantinedCount}** un-whitelisted bot(s)!`;
-                    }
-
-                    const unwhitelistedBots = guild.members.cache.filter(m =>
-                        m.user.bot &&
-                        m.id !== client.user.id &&
-                        !isBotOwner(m.id) &&
-                        !newConfig.whitelisted?.[m.id] &&
-                        !newConfig.extraOwners?.includes(m.id) &&
-                        (m.permissions.has(PermissionFlagsBits.Administrator) ||
-                         m.permissions.has(PermissionFlagsBits.ManageChannels) ||
-                         m.permissions.has(PermissionFlagsBits.ManageRoles) ||
-                         m.permissions.has(PermissionFlagsBits.BanMembers) ||
-                         m.permissions.has(PermissionFlagsBits.KickMembers))
-                    );
-
-                    if (unwhitelistedBots.size > 0) {
-                        const botTags = unwhitelistedBots.map(b => `<@${b.id}>`).slice(0, 5).join(', ');
-                        warningText += `\n\n${emojis.warn} **Security Notice**: Detected ${unwhitelistedBots.size} un-whitelisted bot(s) holding permissions: ${botTags}${unwhitelistedBots.size > 5 ? ' and more' : ''}.\n> Run \`antinuke whitelist @bot\` if trusted, or their dangerous actions will trigger instant dual-action bans.`;
+                        protectRole.setPosition(highestBotRolePos - 1).catch(() => null);
                     }
                 } catch {}
 
-                setupEmbed.setDescription(
-                    `${emojis.tick} **Protection Setup Complete!**\n\n` +
-                    `__**${emojis.antinuke} Protection Details**__\n` +
-                    `> ${emojis.arrow} **Role:** <@&${protectRole.id}>\n` +
-                    `> ${emojis.arrow} **Default Action:** \`${newConfig.punishment.toUpperCase()}\`\n\n` +
-                    `__**${emojis.gear} Active Protection Events**__\n` +
-                    renderEventsList(newConfig.disabledEvents) +
-                    warningText +
-                    `\n\n-# **Note:- Move my "Roynix Protect" role to the top of all roles for the best performance**`
-                )
-                setupEmbed.setThumbnail(guild.iconURL({ size: 1024 }))
-                setupEmbed.setColor(client.color)
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 3000))
-                break;
+                const setupEmbed = new EmbedBuilder()
+                    .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
+                    .setDescription(
+                        `${emojis.tick} **Protection Setup Complete!**\n\n` +
+                        `__**${emojis.antinuke} Protection Details**__\n` +
+                        `> ${emojis.arrow} **Role:** <@&${protectRole.id}>\n` +
+                        `> ${emojis.arrow} **Default Action:** \`${newConfig.punishment.toUpperCase()}\`\n\n` +
+                        `__**${emojis.gear} Active Protection Events**__\n` +
+                        renderEventsList(newConfig.disabledEvents) +
+                        `\n\n-# **Note:- Move my "Roynix Protect" role to the top of all roles for the best performance**`
+                    )
+                    .setFooter({ text: `Executed by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
+                    .setThumbnail(guild.iconURL({ size: 1024 }))
+                    .setColor(client.color);
+
+                return message.reply({ embeds: [setupEmbed] });
             }
 
             case 'disable': {
@@ -287,72 +231,48 @@ export const data = {
                     })
                 }
 
-                const disableEmbed = new EmbedBuilder()
-                    .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
-                    .setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**`)
-                    .setColor(client.color)
-                    .setFooter({ text: `Executed by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
-                    .setThumbnail(guild.iconURL({ size: 1024 }))
-
-                const msg = await message.reply({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
-                disableEmbed.setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
-                    + `> ${emojis.loading} Checking required permissions`
-                )
-                await msg.edit({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
-                const me = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null)
+                const me = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null);
                 if (!me || !me.permissions.has(PermissionFlagsBits.Administrator)) {
-                    disableEmbed.setDescription(`${emojis.cross} **Disable failed**\n`
-                        + `> Missing required permission: \`Administrator\`\n\n`
-                        + `${emojis.info} The bot requires administrator permissions to remove protection systems.`
-                    )
-                    return msg.edit({ embeds: [disableEmbed] })
+                    return message.reply({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                .setDescription(`${emojis.cross} **Disable failed**\n`
+                                    + `> Missing required permission: \`Administrator\`\n\n`
+                                    + `${emojis.info} The bot requires administrator permissions to remove protection systems.`
+                                )
+                                .setColor(client.color)
+                        ]
+                    });
                 }
 
-                disableEmbed.setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.loading} Disabling all protection modules`
-                )
-                await msg.edit({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
-                let roleDeleted = false
+                let roleDeleted = false;
                 if (antinukeData.protectRole) {
                     try {
-                        const role = await guild.roles.fetch(antinukeData.protectRole)
+                        const role = await guild.roles.fetch(antinukeData.protectRole);
                         if (role) {
-                            await role.delete('Antinuke system disabled')
-                            roleDeleted = true
+                            await role.delete('Antinuke system disabled');
+                            roleDeleted = true;
                         }
-                    } catch (error) {
-                    }
+                    } catch {}
                 }
 
-                disableEmbed.setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.tick} Protection modules disabled\n`
-                    + `> ${roleDeleted ? `${emojis.tick}` : `${emojis.cross}`} Protection role ${roleDeleted ? 'deleted' : 'not found'}\n`
-                    + `> ${emojis.loading} Clearing all configuration data`
-                )
-                await msg.edit({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
+                await antinukeDB.delete(`antinukeData_${guild.id}`);
 
-                await antinukeDB.delete(`antinukeData_${guild.id}`)
+                const disableEmbed = new EmbedBuilder()
+                    .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
+                    .setDescription(
+                        `${emojis.tick} **Complete System Shutdown!**\n\n`
+                        + `__**${emojis.warn} All Protection Removed**__\n`
+                        + `> ${emojis.arrow} **Status:** \`Disabled\` ${emojis.cross}\n`
+                        + `> ${emojis.arrow} **Role:** ${roleDeleted ? '`Deleted`' : '`Not found`'}\n\n`
+                        + `-# Use \`antinuke enable\` to set up a new protection system.`
+                    )
+                    .setFooter({ text: `Executed by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
+                    .setThumbnail(guild.iconURL({ size: 1024 }))
+                    .setColor(client.color);
 
-                disableEmbed.setDescription(
-                    `${emojis.tick} **Complete System Shutdown!**\n\n`
-                    + `__**${emojis.warn} All Protection Removed**__\n`
-                    + `> ${emojis.arrow} **Status:** \`Disable\` ${emojis.cross}\n`
-                    + `> ${emojis.arrow} **Role:** ${roleDeleted ? '`Deleted`' : '`Not found`'}\n\n`
-                    + `-# Use \`antinuke enable\` to set up a new protection system.`
-                )
-                disableEmbed.setColor(client.color)
-                await msg.edit({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 3000))
-                break
+                return message.reply({ embeds: [disableEmbed] });
             }
             case 'owner':
             case 'eo':
