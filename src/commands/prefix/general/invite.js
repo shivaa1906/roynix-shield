@@ -10,13 +10,17 @@ export const data = {
      * @param {import('../../base/Roynix').Roynix} client
      */
     async execute(message, args, client) {
+        const botAvatar = config.avatar || client.user.displayAvatarURL({ dynamic: true });
+        const botBanner = config.banner || client.user.bannerURL({ size: 1024 }) || null;
         const inviteEmbed = new EmbedBuilder()
             .setColor(client.color)
             .setAuthor({ 
                 name: `${client.user.username} Invite`,
-                iconURL: client.user.displayAvatarURL({ dynamic: true })
+                iconURL: botAvatar
             })
             .setDescription(`Invite ${client.user.username} to your server using the link below:`)
+            .setThumbnail(botAvatar)
+            .setImage(botBanner)
             .setFooter({
                 text: `Requested by ${message.author.tag}`,
                 iconURL: message.author.displayAvatarURL({ dynamic: true })

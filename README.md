@@ -84,7 +84,7 @@ You can set up various modules using the bot's commands. Here are some examples:
 
 ## Support
 
-For support, join our [Discord server](https://discord.gg/ZVJrep3YJm) or contact us via [email](mailto:npgearly@gmail.com).
+For support, join our [Discord server](https://discord.gg/XA4VZMYsbP) or contact us via [email](mailto:npgearly@gmail.com).
 
 ## License
 

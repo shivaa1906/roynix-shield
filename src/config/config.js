@@ -12,9 +12,10 @@ const config = {
     developers: process.env.DEVELOPERS ? process.env.DEVELOPERS.split(',').map(id => id.trim()) : [
         '788970167907778562'
     ],
-    banner: process.env.BANNER_URL || "https://cdn.discordapp.com/banners/1538404690516115497/a_7ef367f0038b96a432b57f94966152e5.gif?size=1024",
+    avatar: "https://cdn.discordapp.com/avatars/1538404690516115497/cb27f8dfcd262ee897fd2f05c20eab5e.png?size=1024",
+    banner: "https://cdn.discordapp.com/banners/1538404690516115497/a_7ef367f0038b96a432b57f94966152e5.gif?size=1024",
     links: {
-        supportServer: process.env.SUPPORT_SERVER || "https://discord.gg/aq8BHc2Q",
+        supportServer: "https://discord.gg/XA4VZMYsbP",
     },
     webhooks: {
         error: process.env.ERROR_WEBHOOK_URL || "https://discordapp.com/api/webhooks/1406246759230869605/Hq81yIfQr3ApFOu77ZszhGxc9M3wTqB_lhoopS0p8a8x8-mu_3X7aO4e66aDrFyh6hrI",

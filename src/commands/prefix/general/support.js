@@ -9,13 +9,17 @@ export const data = {
      * @param {import('../../base/Roynix').Roynix} client
      */
     async execute(message, args, client) {
+        const botAvatar = config.avatar || client.user.displayAvatarURL({ dynamic: true });
+        const botBanner = config.banner || client.user.bannerURL({ size: 1024 }) || null;
         const supportEmbed = new EmbedBuilder()
             .setColor(client.color)
             .setAuthor({ 
                 name: `${client.user.username} Support`,
-                iconURL: client.user.displayAvatarURL({ dynamic: true })
+                iconURL: botAvatar
             })
             .setDescription(`If you need help, please visit our Support Server`)
+            .setThumbnail(botAvatar)
+            .setImage(botBanner)
             .setFooter({
                 text: `Requested by ${message.author.tag}`,
                 iconURL: message.author.displayAvatarURL({ dynamic: true })

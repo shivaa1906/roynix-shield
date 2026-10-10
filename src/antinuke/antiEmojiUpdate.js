@@ -1,8 +1,8 @@
 import { AuditLogEvent, EmbedBuilder } from 'discord.js';
-import { isBotOwner } from '../utils/isBotOwner.js';
 import emojis from '../config/emojis.js';
 import { getAuditExecutor } from '../utils/getExecutor.js';
 import { punishExecutor } from '../utils/punishExecutor.js';
+import { incidentCoordinator } from '../utils/incidentCoordinator.js';
 
 export const data = {
   /**
@@ -10,7 +10,7 @@ export const data = {
    */
   async execute(client) {
     client.on('emojiUpdate', async (oldEmoji, newEmoji) => {
-      const guild = newEmoji.guild;
+      const guild = newEmoji?.guild;
       if (!guild) return;
       const event = 'antiEmojiUpdate';
 
@@ -18,34 +18,46 @@ export const data = {
       if (!antinukeData?.enabled) return;
       if (antinukeData?.disabledEvents?.includes(event)) return;
 
-      const extraOwners = antinukeData.extraOwners || [];
-      const whitelisted = antinukeData.whitelisted || {};
       const punishment = antinukeData.punishment || 'ban';
-
       const executor = await getAuditExecutor(guild, AuditLogEvent.EmojiUpdate, newEmoji.id, client);
-      if (!executor) return;
+      const coordinator = client.incidentCoordinator || incidentCoordinator;
 
-      if (
-        executor.id === client.user.id ||
-        executor.id === guild.ownerId ||
-        isBotOwner(executor.id) ||
-        extraOwners.includes(executor.id) ||
-        whitelisted[executor.id]?.events?.includes(event)
-      ) return;
+      const incident = coordinator.coordinateIncident({
+        guild,
+        client,
+        antinukeData,
+        actionType: AuditLogEvent.EmojiUpdate,
+        moduleKey: event,
+        targetId: newEmoji.id,
+        executorId: executor?.id || null,
+        auditEntryId: executor?.auditEntryId || null
+      });
+
+      if (incident.decision !== 'enforce' || !executor?.id) return;
 
       const trackingKey = `${guild.id}_antiEmojiUpdate_${newEmoji.id}_${executor.id}`;
-      const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Emoji Update', client, trackingKey);
-      const revertPromise = (async () => {
-        try {
-          if (oldEmoji.name !== newEmoji.name) {
-            await newEmoji.edit({ name: oldEmoji.name }, 'Roynix Antinuke System | Reverting Emoji Update');
-            return true;
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      })();
+      const punishPromise = punishExecutor(
+        guild,
+        executor,
+        punishment,
+        'Roynix Antinuke System | Anti Emoji Update',
+        client,
+        trackingKey,
+        { incident, antinukeData, moduleKey: event, targetId: newEmoji.id }
+      );
+      const revertPromise = !antinukeData?.disabledEvents?.includes('autoRecovery')
+        ? coordinator.executeRecovery(incident, async () => {
+            try {
+              if (oldEmoji.name !== newEmoji.name) {
+                await newEmoji.edit({ name: oldEmoji.name }, 'Roynix Antinuke System | Reverting Emoji Update');
+                return true;
+              }
+              return false;
+            } catch {
+              return false;
+            }
+          })
+        : Promise.resolve(false);
 
       const [actionTaken, reverted] = await Promise.all([punishPromise, revertPromise]);
 

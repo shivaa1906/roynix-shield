@@ -21,7 +21,7 @@ export const data = {
                     new EmbedBuilder()
                         .setDescription(`${emojis.warn} ** || There are no text channels to lock.**`)
                         .setTimestamp()
-                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: 'https://images-ext-1.discordapp.net/external/SSYjRXNg_57h3KEDfhatBnYjmZAoNjhpoi50DDpS2VU/%3Fsize%3D1024/https/cdn.discordapp.com/avatars/1324050005467730091/21e8412082ea668bd2d5b49e2619fb64.png?format=webp&quality=lossless&width=939&height=939' })
+                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: client.user.displayAvatarURL({ size: 1024 }) })
                         .setColor(client.color)
                 ]
             });

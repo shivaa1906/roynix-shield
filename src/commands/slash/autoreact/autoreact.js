@@ -60,7 +60,7 @@ export const data = {
         const unicodeEmojiRegex = /^\p{Emoji}$/u;
         const allPremiumEntries = await client.premiumGuildDB.all();
         const premiumGuild = allPremiumEntries.some(entry =>
-            entry.id.startsWith(`guild_${message.guild.id}_`)
+            entry.id.startsWith(`guild_${guild.id}_`)
         )
 
         switch (sub) {

@@ -30,7 +30,7 @@ export const data = {
                     new EmbedBuilder()
                         .setDescription(`${emojis.warn} ** || Channel not found or invalid.**`)
                         .setTimestamp()
-                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: 'https://images-ext-1.discordapp.net/external/SSYjRXNg_57h3KEDfhatBnYjmZAoNjhpoi50DDpS2VU/%3Fsize%3D1024/https/cdn.discordapp.com/avatars/1324050005467730091/21e8412082ea668bd2d5b49e2619fb64.png?format=webp&quality=lossless&width=939&height=939' })
+                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: client.user.displayAvatarURL({ size: 1024 }) })
                         .setColor(client.color)
                 ]
             });
@@ -46,7 +46,7 @@ export const data = {
                     new EmbedBuilder()
                         .setDescription(`${emojis.warn} ** || Cannot check permissions for @everyone.**`)
                         .setTimestamp()
-                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: 'https://images-ext-1.discordapp.net/external/SSYjRXNg_57h3KEDfhatBnYjmZAoNjhpoi50DDpS2VU/%3Fsize%3D1024/https/cdn.discordapp.com/avatars/1324050005467730091/21e8412082ea668bd2d5b49e2619fb64.png?format=webp&quality=lossless&width=939&height=939' })
+                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: client.user.displayAvatarURL({ size: 1024 }) })
                         .setColor(client.color)
                 ]
             });
@@ -57,7 +57,7 @@ export const data = {
                 embeds: [
                     new EmbedBuilder()
                         .setTimestamp()
-                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: 'https://images-ext-1.discordapp.net/external/SSYjRXNg_57h3KEDfhatBnYjmZAoNjhpoi50DDpS2VU/%3Fsize%3D1024/https/cdn.discordapp.com/avatars/1324050005467730091/21e8412082ea668bd2d5b49e2619fb64.png?format=webp&quality=lossless&width=939&height=939' })
+                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: client.user.displayAvatarURL({ size: 1024 }) })
                         .setColor(client.color)
                         .setDescription(`${emojis.warn} ** || This channel is already hidden for @everyone**`)
                 ]
@@ -71,7 +71,7 @@ export const data = {
                     new EmbedBuilder()
                         .setDescription(`${emojis.warn} ** || I don't have permission to manage this channel.**`)
                         .setTimestamp()
-                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: 'https://images-ext-1.discordapp.net/external/SSYjRXNg_57h3KEDfhatBnYjmZAoNjhpoi50DDpS2VU/%3Fsize%3D1024/https/cdn.discordapp.com/avatars/1324050005467730091/21e8412082ea668bd2d5b49e2619fb64.png?format=webp&quality=lossless&width=939&height=939' })
+                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: client.user.displayAvatarURL({ size: 1024 }) })
                         .setColor(client.color)
                 ]
             });
@@ -87,7 +87,7 @@ export const data = {
                     new EmbedBuilder()
                         .setDescription(`${emojis.cross} **|| Failed to hide the channel.**`)
                         .setTimestamp()
-                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: 'https://images-ext-1.discordapp.net/external/SSYjRXNg_57h3KEDfhatBnYjmZAoNjhpoi50DDpS2VU/%3Fsize%3D1024/https/cdn.discordapp.com/avatars/1324050005467730091/21e8412082ea668bd2d5b49e2619fb64.png?format=webp&quality=lossless&width=939&height=939' })
+                 	    .setFooter({ text: 'Thanks for using Roynix', iconURL: client.user.displayAvatarURL({ size: 1024 }) })
                         .setColor(client.color)
                 ]
             });

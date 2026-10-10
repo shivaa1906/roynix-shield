@@ -1,8 +1,29 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed, EmbedBuilder, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder } from 'discord.js'
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Embed, EmbedBuilder, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder } from 'discord.js'
 import emojis from '../../../config/emojis.js'
+import config from '../../../config/config.js'
 import { isBotOwner } from '../../../utils/isBotOwner.js'
+import { isCommandAuthorized, verifyCollectorInteraction, positionAndAuditProtectRole } from '../../../utils/securityPolicy.js'
+import { blueprintManager } from '../../../utils/blueprintManager.js'
 import { paginate } from '../../../utils/pagination.js'
 import { antinukeModules, findModule, renderEventsList } from '../../../utils/antinukeModules.js'
+import { quarantineGuildBots } from '../../../antinuke/zeroTrustQuarantine.js'
+
+const delay = (ms, client = null) => new Promise(resolve => setTimeout(
+    resolve,
+    typeof client?.stepDelayMs === 'number' ? client.stepDelayMs : ms
+))
+
+async function resolveTargetMember(message, rawArg) {
+    const mentioned = message.mentions?.members?.first?.()
+    if (mentioned) return mentioned
+    if (!rawArg || typeof rawArg !== 'string') return null
+    const cleanId = rawArg.replace(/[<@!>]/g, '').trim()
+    if (!/^\d{5,25}$/.test(cleanId)) return null
+    const cached = message.guild?.members?.cache?.get?.(cleanId)
+    if (cached) return cached
+    return await message.guild?.members?.fetch?.(cleanId).catch(() => null) || null
+}
+
 export const data = {
     name: 'antinuke',
     description: 'manages the antinuke system of the bot.',
@@ -17,7 +38,7 @@ export const data = {
         const guild = message.guild
         const antinukeDB = client.antinukeDB
         const antinukeData = await antinukeDB.get(`antinukeData_${guild.id}`)
-        if (!isBotOwner(message.author.id) && message.author.id !== guild.ownerId && !antinukeData?.extraOwners?.includes(message.author.id)) {
+        if (!isCommandAuthorized(guild, message.author.id, antinukeData, client)) {
             return message.reply({
                 embeds: [
                     new EmbedBuilder()
@@ -77,15 +98,19 @@ export const data = {
                 }
 
                 if (antinukeData?.enabled) {
+                    const syncCheck = await blueprintManager.syncProtectRoleIfStale(guild, client, antinukeData)
+                    const roleNote = syncCheck.missing
+                        ? `\n${emojis.warn} **Warning:** Protection role is missing! Run \`antinuke disable\` and \`antinuke enable\` to recreate it.`
+                        : ''
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                 .setDescription(`${emojis.warn} **Antinuke system is already enabled in this server.**\n\n`
                                     + `__**Current Status**__\n`
                                     + `${emojis.arrow} **State:** ${antinukeData?.enabled ? `\`Enabled\` ${emojis.tick}` : `\`Disabled\` ${emojis.cross}`}\n`
                                     + `${emojis.arrow} **Use \`antinuke disable\` to turn off protection**\n\n`
-                                    + `${emojis.info} **Note:** For full functionality, ensure "Roynix Protect" role is at the top`)
+                                    + `${emojis.info} **Note:** For full functionality, ensure "Roynix Protect" role is at the top${roleNote}`)
                                 .setThumbnail(guild.iconURL({ size: 1024 }))
                                 .setColor(client.color)
                         ]
@@ -93,20 +118,15 @@ export const data = {
                 }
 
                 const setupEmbed = new EmbedBuilder()
-                    .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
-                    .setDescription(`${emojis.antinuke} **Initializing protection setup...**`)
+                    .setAuthor({ name: 'Roynix Shield Setup', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
+                    .setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
+                        + `> ${emojis.loading} Checking required permissions & preparing protection role`
+                    )
                     .setColor(client.color)
                     .setFooter({ text: `Executed by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
                     .setThumbnail(guild.iconURL({ size: 1024 }))
 
                 const msg = await message.reply({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
-                setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.loading} Checking required permissions`
-                )
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
 
                 const me = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null)
                 if (!me || !me.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -114,17 +134,10 @@ export const data = {
                         + `> Missing required permission: \`Administrator\`\n\n`
                         + `${emojis.info} The bot requires administrator permissions to properly protect your server.`
                     )
-                    return msg.edit({ embeds: [setupEmbed] })
+                    return msg.edit({ embeds: [setupEmbed] }).catch(() => null)
                 }
 
-                setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.loading} Creating protection role`
-                )
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
-                let protectRole = (antinukeData?.protectRole && guild.roles.cache.get(antinukeData.protectRole))
+                let protectRole = (antinukeData?.protectRole && (guild.roles.cache.get(antinukeData.protectRole) || await guild.roles.fetch(antinukeData.protectRole).catch(() => null)))
                     || guild.roles.cache.find(r => r.name === 'Roynix Protect' || r.name === 'Roynix Shield Protect')
 
                 if (!protectRole) {
@@ -140,17 +153,13 @@ export const data = {
                             + `> Failed to create protection role: \`${roleError.message || 'Missing Permissions'}\`\n\n`
                             + `${emojis.info} Please ensure the bot has permission to manage roles and the server has not reached the role limit.`
                         )
-                        return msg.edit({ embeds: [setupEmbed] })
+                        return msg.edit({ embeds: [setupEmbed] }).catch(() => null)
                     }
                 }
 
-                setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.tick} Created protection role (<@&${protectRole.id}>)\n`
-                    + `> ${emojis.loading} Configuring system settings`
-                )
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
+                if (me?.roles?.add && !me.roles.cache?.has(protectRole.id)) {
+                    await me.roles.add(protectRole, 'Assigning Roynix Protect role').catch(() => null)
+                }
 
                 const newConfig = {
                     enabled: true,
@@ -162,25 +171,47 @@ export const data = {
                     punishment: antinukeData?.punishment || 'ban',
                     disabledEvents: antinukeData?.disabledEvents || []
                 }
-                await antinukeDB.set(`antinukeData_${guild.id}`, newConfig)
+                await client.setAntinukeData(guild.id, newConfig)
 
+                const hierarchyAudit = await positionAndAuditProtectRole(guild, me, protectRole, emojis)
+                let rolePositionWarning = hierarchyAudit.warningText
+
+                await delay(1200, client)
+
+                // Intermediate Frame: Progress Animation
                 setupEmbed.setDescription(`${emojis.antinuke} **Initializing protection setup...**\n`
                     + `> ${emojis.tick} Permission check passed\n`
                     + `> ${emojis.tick} Created protection role (<@&${protectRole.id}>)\n`
                     + `> ${emojis.tick} System configuration saved\n`
-                    + `> ${emojis.loading} Positioning protection role`
+                    + `> ${emojis.loading} Finalizing security audit`
                 )
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
+                await msg.edit({ embeds: [setupEmbed] }).catch(() => null)
 
+                // Security Audit: Check un-whitelisted bots for warning notice without proactively stripping roles
+                let warningText = rolePositionWarning;
                 try {
-                    const highestBotRolePos = me.roles?.highest?.position ?? 0
-                    if (highestBotRolePos > 1 && protectRole.position < highestBotRolePos - 1) {
-                        await protectRole.setPosition(highestBotRolePos - 1).catch(() => null)
-                    }
-                } catch (roleError) {
-                }
+                    const unwhitelistedBots = guild.members.cache.filter(m =>
+                        m.user.bot &&
+                        m.id !== client.user.id &&
+                        !isBotOwner(m.id) &&
+                        !newConfig.whitelisted?.[m.id] &&
+                        !newConfig.extraOwners?.includes(m.id) &&
+                        (m.permissions.has(PermissionFlagsBits.Administrator) ||
+                         m.permissions.has(PermissionFlagsBits.ManageChannels) ||
+                         m.permissions.has(PermissionFlagsBits.ManageRoles) ||
+                         m.permissions.has(PermissionFlagsBits.BanMembers) ||
+                         m.permissions.has(PermissionFlagsBits.KickMembers))
+                    );
 
+                    if (unwhitelistedBots.size > 0) {
+                        const botTags = unwhitelistedBots.map(b => `<@${b.id}>`).slice(0, 5).join(', ');
+                        warningText += `\n\n${emojis.warn} **Security Notice**: Detected ${unwhitelistedBots.size} un-whitelisted bot(s) holding permissions: ${botTags}${unwhitelistedBots.size > 5 ? ' and more' : ''}.\n> Run \`antinuke whitelist @bot\` if trusted, or their dangerous actions will trigger instant dual-action bans.`;
+                    }
+                } catch {}
+
+                await delay(1500, client)
+
+                // Final Frame: Complete with guaranteed retry so it never stays stuck
                 setupEmbed.setDescription(
                     `${emojis.tick} **Protection Setup Complete!**\n\n` +
                     `__**${emojis.antinuke} Protection Details**__\n` +
@@ -188,12 +219,21 @@ export const data = {
                     `> ${emojis.arrow} **Default Action:** \`${newConfig.punishment.toUpperCase()}\`\n\n` +
                     `__**${emojis.gear} Active Protection Events**__\n` +
                     renderEventsList(newConfig.disabledEvents) +
+                    warningText +
                     `\n\n-# **Note:- Move my "Roynix Protect" role to the top of all roles for the best performance**`
                 )
                 setupEmbed.setThumbnail(guild.iconURL({ size: 1024 }))
                 setupEmbed.setColor(client.color)
-                await msg.edit({ embeds: [setupEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 3000))
+
+                let finalEdited = false;
+                for (let attempt = 0; attempt < 3 && !finalEdited; attempt++) {
+                    try {
+                        await msg.edit({ embeds: [setupEmbed] });
+                        finalEdited = true;
+                    } catch {
+                        await delay(1200, client);
+                    }
+                }
                 break;
             }
 
@@ -246,7 +286,7 @@ export const data = {
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                 .setDescription(`${emojis.warn} **Antinuke system is already disabled in this server.**\n\n`
                                     + `__**Current Status**__\n`
                                     + `${emojis.arrow} **State:** ${antinukeData?.enabled ? `\`Enabled\` ${emojis.tick}` : `\`Disabled\` ${emojis.cross}`}\n`
@@ -259,20 +299,15 @@ export const data = {
                 }
 
                 const disableEmbed = new EmbedBuilder()
-                    .setAuthor({ name: 'Roynix Antinuke Setup', iconURL: client.user.avatarURL({ size: 1024 }) })
-                    .setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**`)
+                    .setAuthor({ name: 'Roynix Shield Setup', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
+                    .setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
+                        + `> ${emojis.loading} Checking required permissions`
+                    )
                     .setColor(client.color)
                     .setFooter({ text: `Executed by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
                     .setThumbnail(guild.iconURL({ size: 1024 }))
 
                 const msg = await message.reply({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
-
-                disableEmbed.setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
-                    + `> ${emojis.loading} Checking required permissions`
-                )
-                await msg.edit({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
 
                 const me = guild.members.me || await guild.members.fetch(client.user.id).catch(() => null)
                 if (!me || !me.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -280,58 +315,80 @@ export const data = {
                         + `> Missing required permission: \`Administrator\`\n\n`
                         + `${emojis.info} The bot requires administrator permissions to remove protection systems.`
                     )
-                    return msg.edit({ embeds: [disableEmbed] })
+                    return msg.edit({ embeds: [disableEmbed] }).catch(() => null)
                 }
 
+                await delay(1000, client)
+
+                // Frame 2: Permission check passed & Removing protection role
                 disableEmbed.setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
                     + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.loading} Disabling all protection modules`
+                    + `> ${emojis.loading} Disabling all protection modules & removing role`
                 )
-                await msg.edit({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
+                await msg.edit({ embeds: [disableEmbed] }).catch(() => null)
 
                 let roleDeleted = false
-                if (antinukeData.protectRole) {
+                let roleDeleteWarning = ''
+                const targetRoleId = antinukeData.protectRole
+                const fallbackRole = (!targetRoleId ? null : (guild.roles.cache.get(targetRoleId) || await guild.roles.fetch(targetRoleId).catch(() => null)))
+                    || guild.roles.cache.find(r => r.name === 'Roynix Protect' || r.name === 'Roynix Shield Protect')
+
+                if (fallbackRole) {
                     try {
-                        const role = await guild.roles.fetch(antinukeData.protectRole)
-                        if (role) {
-                            await role.delete('Antinuke system disabled')
-                            roleDeleted = true
+                        const botHighestPos = me.roles?.highest?.position ?? 0
+                        if (botHighestPos > 0 && fallbackRole.position >= botHighestPos) {
+                            roleDeleteWarning = `\n\n${emojis.warn} **Role Hierarchy Warning**: Could not delete <@&${fallbackRole.id}> because its position (\`${fallbackRole.position}\`) is at or above my highest role (\`${botHighestPos}\`).`
+                        } else {
+                            const deleted = await fallbackRole.delete('Antinuke system disabled').then(() => true).catch(() => false)
+                            if (deleted) {
+                                roleDeleted = true
+                            } else {
+                                roleDeleteWarning = `\n\n${emojis.warn} **Role Cleanup Warning**: Failed to delete <@&${fallbackRole.id}> due to role hierarchy or permission constraints.`
+                            }
                         }
                     } catch (error) {
+                        roleDeleteWarning = `\n\n${emojis.warn} **Role Cleanup Warning**: Failed to delete protection role.`
                     }
                 }
 
-                disableEmbed.setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
-                    + `> ${emojis.tick} Permission check passed\n`
-                    + `> ${emojis.tick} Protection modules disabled\n`
-                    + `> ${roleDeleted ? `${emojis.tick}` : `${emojis.cross}`} Protection role ${roleDeleted ? 'deleted' : 'not found'}\n`
-                    + `> ${emojis.loading} Clearing all configuration data`
-                )
-                await msg.edit({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 600))
+                // Preserve whitelists, extraOwners, logsChannel, punishment, and disabledEvents while turning off protection
+                await client.setAntinukeData(guild.id, {
+                    ...antinukeData,
+                    enabled: false,
+                    protectRole: null
+                })
 
-                await antinukeDB.delete(`antinukeData_${guild.id}`)
+                await delay(1200, client)
 
+                // Final Frame: Complete System Shutdown!
                 disableEmbed.setDescription(
                     `${emojis.tick} **Complete System Shutdown!**\n\n`
-                    + `__**${emojis.warn} All Protection Removed**__\n`
-                    + `> ${emojis.arrow} **Status:** \`Disable\` ${emojis.cross}\n`
-                    + `> ${emojis.arrow} **Role:** ${roleDeleted ? '`Deleted`' : '`Not found`'}\n\n`
-                    + `-# Use \`antinuke enable\` to set up a new protection system.`
+                    + `__**${emojis.warn} Protection Disabled**__\n`
+                    + `> ${emojis.arrow} **Status:** \`Disabled\` ${emojis.cross}\n`
+                    + `> ${emojis.arrow} **Role:** ${roleDeleted ? '`Deleted`' : (fallbackRole ? '`Delete Failed (Hierarchy)`' : '`Not found`')}\n`
+                    + `> ${emojis.arrow} **Saved Settings:** \`Whitelists & Owners Preserved\` ${emojis.tick}`
+                    + roleDeleteWarning + `\n\n`
+                    + `-# Use \`antinuke enable\` to re-activate protection with your saved settings.`
                 )
                 disableEmbed.setColor(client.color)
-                await msg.edit({ embeds: [disableEmbed] })
-                await new Promise(resolve => setTimeout(resolve, 3000))
+
+                let disableEdited = false;
+                for (let attempt = 0; attempt < 3 && !disableEdited; attempt++) {
+                    try {
+                        await msg.edit({ embeds: [disableEmbed] });
+                        disableEdited = true;
+                    } catch {
+                        await delay(1000, client);
+                    }
+                }
                 break
             }
             case 'owner':
             case 'eo':
             case 'extraowner': {
-                const member = message.mentions.members.first() || message.guild.members.fetch(args[2])
                 const extraOwners = antinukeData?.extraOwners || []
 
-                if (message.author.id !== guild.ownerId && !isBotOwner(message.author.id)) {
+                if (!isCommandAuthorized(guild, message.author.id, antinukeData, client, { requireOwnerOnly: true })) {
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
@@ -345,7 +402,7 @@ export const data = {
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                 .setDescription(
                                     `**Extra Owner Management**\n\n` +
                                     `- \`antinuke extraowner add <member>\`\n└  Adds a extraowner\n\n` +
@@ -374,24 +431,24 @@ export const data = {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.warn} **Please mention a valid Member or provide a valid Member ID.**`)
                                         .setColor(client.color)
                                 ]
                             })
                         }
+                        const member = await resolveTargetMember(message, args[2])
                         if (!member) {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.warn} **Please mention a valid Member or provide a valid Member ID.**`)
                                         .setColor(client.color)
                                 ]
                             })
                         }
 
-                        if (extraOwners.includes(member.user.id)) {
+                        const targetUserId = member.user?.id || member.id
+                        if (extraOwners.includes(targetUserId)) {
                             return message.channel.send({
                                 embeds: [
                                     new EmbedBuilder()
@@ -401,13 +458,12 @@ export const data = {
                             });
                         }
 
-                        extraOwners?.push(member.user.id);
+                        extraOwners?.push(targetUserId);
 
                         await antinukeDB.set(`antinukeData_${guild.id}.extraOwners`, extraOwners).then(() => {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setColor(client.color)
                                         .setDescription(`${emojis.tick} ${member} **has been added to Extra Owners.**`)
                                 ]
@@ -430,7 +486,6 @@ export const data = {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setColor(client.color)
                                         .setDescription(`${emojis.warn} **No Extra Owners have been set.**`)
                                 ]
@@ -438,7 +493,6 @@ export const data = {
                         }
 
                         const itemsPerPage = 5;
-                        let page = 0;
                         const totalPages = Math.ceil(extraOwners.length / itemsPerPage);
 
                         const generateEmbed = (pageNum) => {
@@ -453,8 +507,8 @@ export const data = {
                                 .setThumbnail(message.guild.iconURL({ size: 1024 }));
                             let description = ``
                             pageItems.forEach((id) => {
-                                const owner = client.users.cache.get(id);
-                                description += `${owner} (\`${id}\`)\n`
+                                const owner = client.users?.cache?.get?.(id);
+                                description += `${owner || `<@${id}>`} (\`${id}\`)\n`
                             });
                             embed.setDescription(description)
                             return embed;
@@ -479,11 +533,15 @@ export const data = {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.warn} **Please mention a valid Member or provide a valid Member ID.**`)
                                         .setColor(client.color)
                                 ]
                             })
+                        }
+                        let member = await resolveTargetMember(message, args[2])
+                        const cleanId = String(args[2]).replace(/[<@!>]/g, '').trim()
+                        if (!member && /^\d{5,25}$/.test(cleanId) && extraOwners.includes(cleanId)) {
+                            member = { id: cleanId, user: { id: cleanId }, toString: () => `<@${cleanId}>` }
                         }
                         if (!member) {
                             return message.reply({
@@ -495,23 +553,22 @@ export const data = {
                             })
                         }
 
-                        if (!extraOwners.includes(member.user.id)) {
+                        const targetUserId = member.user?.id || member.id
+                        if (!extraOwners.includes(targetUserId)) {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.warn} ${member} **is not in the Extra Owners.**`)
                                         .setColor(client.color)
                                 ]
                             })
                         }
 
-                        const extraOwners2 = extraOwners.filter(id => id !== member.user.id);
+                        const extraOwners2 = extraOwners.filter(id => id !== targetUserId);
                         await antinukeDB.set(`antinukeData_${guild.id}.extraOwners`, extraOwners2).then(() => {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.tick} **Successfully remove ${member} from Extra Owners**`)
                                         .setColor(client.color)
                                 ]
@@ -535,7 +592,6 @@ export const data = {
                         return message.reply({
                             embeds: [
                                 new EmbedBuilder()
-
                                     .setDescription(`${emojis.warn} **Successfully reseted all extra owners for this guild.**`)
                                     .setColor(client.color)
                             ]
@@ -546,7 +602,7 @@ export const data = {
                         return message.reply({
                             embeds: [
                                 new EmbedBuilder()
-                                    .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                    .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                     .setDescription(
                                         `**Extra Owner Management**\n\n` +
                                         `- \`antinuke extraowner add <member>\`\n└  Adds a extraowner\n\n` +
@@ -562,14 +618,11 @@ export const data = {
             }
             case 'wl':
             case 'whitelist': {
-                const member = message.mentions.members.first() || message.guild.members.fetch(args[2])
-
-
                 if (!action) {
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                 .setDescription(
                                     `**Whitelist Management**\n\n` +
                                     `- \`antinuke whitelist add <member>\`\n└  Adds a whitelist user\n\n` +
@@ -622,26 +675,26 @@ export const data = {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.warn} **Please mention a valid Member or provide a valid Member ID.**`)
                                         .setColor(client.color)
                                 ]
                             })
                         }
+                        const member = await resolveTargetMember(message, args[2])
                         if (!member) {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.warn} **Please mention a valid Member or provide a valid Member ID.**`)
                                         .setColor(client.color)
                                 ]
                             })
                         }
 
+                        const targetUserId = member.user?.id || member.id
                         let whitelist = antinukeData?.whitelisted || {}
 
-                        if (whitelist[member.user.id]) {
+                        if (whitelist[targetUserId]) {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
@@ -651,24 +704,21 @@ export const data = {
                             });
                         }
 
-
-
                         const selectMenu = new StringSelectMenuBuilder()
-                            .setCustomId(`whitelist_select_${member.user.id}`)
+                            .setCustomId(`whitelist_select_${targetUserId}`)
                             .setPlaceholder('Select events to whitelist')
                             .setMinValues(1)
                             .setMaxValues(fields.length)
                             .addOptions(fields.map(field => ({ label: field.name, value: field.key })));
 
                         const whitelistAllButton = new ButtonBuilder()
-                            .setCustomId(`whitelist_all_${member.user.id}`)
+                            .setCustomId(`whitelist_all_${targetUserId}`)
                             .setLabel('Whitelist All Events')
                             .setEmoji(emojis.gear)
                             .setStyle(ButtonStyle.Secondary);
 
                         const actionRow = new ActionRowBuilder().addComponents(selectMenu);
                         const buttonRow = new ActionRowBuilder().addComponents(whitelistAllButton);
-
 
                         const embed = new EmbedBuilder()
                             .setColor(client.color)
@@ -679,13 +729,16 @@ export const data = {
                         const sentMessage = await message.reply({ embeds: [embed], components: [actionRow, buttonRow] });
 
                         const collector = sentMessage.createMessageComponentCollector({ time: 60000 });
+                        let completed = false;
 
                         collector.on('collect', async (i) => {
-                            if (i.user.id !== message.author.id) {
-                                return i.reply({ content: 'You cannot interact with this.', flags: MessageFlags.Ephemeral });
-                            }
+                            const authCheck = await verifyCollectorInteraction(i, message.author.id, guild, client, {
+                                requireEnabled: true,
+                                collector
+                            });
+                            if (!authCheck.ok) return;
 
-                            if (i.customId === `whitelist_select_${member.user.id}`) {
+                            if (i.customId === `whitelist_select_${targetUserId}`) {
                                 await i.reply({
                                     embeds: [
                                         new EmbedBuilder()
@@ -695,7 +748,7 @@ export const data = {
                                     flags: MessageFlags.Ephemeral
                                 });
 
-                                await client.antinukeDB.set(`antinukeData_${guild.id}.whitelisted.${member.user.id}`, {
+                                await client.antinukeDB.set(`antinukeData_${guild.id}.whitelisted.${targetUserId}`, {
                                     events: i.values,
                                     executorId: message.author.id,
                                     timestamp: Date.now()
@@ -725,10 +778,11 @@ export const data = {
                                     components: []
                                 });
 
-                                collector.stop();
+                                completed = true;
+                                collector.stop('completed');
                             }
 
-                            else if (i.customId === `whitelist_all_${member.user.id}`) {
+                            else if (i.customId === `whitelist_all_${targetUserId}`) {
                                 await i.reply({
                                     embeds: [
                                         new EmbedBuilder()
@@ -741,7 +795,7 @@ export const data = {
                                 const allKeys = fields.map(field => field.key);
                                 const allLabels = fields.map(field => `${emojis.enabled} **${field.name}**`).join("\n");
 
-                                await client.antinukeDB.set(`antinukeData_${guild.id}.whitelisted.${member.user.id}`, {
+                                await client.antinukeDB.set(`antinukeData_${guild.id}.whitelisted.${targetUserId}`, {
                                     events: allKeys,
                                     executorId: message.author.id,
                                     timestamp: Date.now()
@@ -766,10 +820,16 @@ export const data = {
                                     components: []
                                 });
 
-                                collector.stop();
+                                completed = true;
+                                collector.stop('completed');
                             }
                         });
 
+                        collector.on('end', async () => {
+                            if (!completed && sentMessage?.editable !== false) {
+                                await sentMessage.edit({ components: [] }).catch(() => null);
+                            }
+                        });
 
                         return;
                     }
@@ -788,26 +848,29 @@ export const data = {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.warn} **Please mention a valid Member or provide a valid Member ID.**`)
                                         .setColor(client.color)
                                 ]
                             })
+                        }
+                        let whitelist = antinukeData?.whitelisted || {}
+                        let member = await resolveTargetMember(message, args[2])
+                        const cleanId = String(args[2]).replace(/[<@!>]/g, '').trim()
+                        if (!member && /^\d{5,25}$/.test(cleanId) && whitelist[cleanId]) {
+                            member = { id: cleanId, user: { id: cleanId }, toString: () => `<@${cleanId}>` }
                         }
                         if (!member) {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
-
                                         .setDescription(`${emojis.warn} **Please mention a valid Member or provide a valid Member ID.**`)
                                         .setColor(client.color)
                                 ]
                             })
                         }
 
-                        let whitelist = antinukeData?.whitelisted || {}
-
-                        if (!whitelist[member.user.id]) {
+                        const targetUserId = member.user?.id || member.id
+                        if (!whitelist[targetUserId]) {
                             return message.reply({
                                 embeds: [
                                     new EmbedBuilder()
@@ -817,7 +880,7 @@ export const data = {
                             })
                         }
 
-                        await antinukeDB.delete(`antinukeData_${guild.id}.whitelisted.${member.user.id}`)
+                        await antinukeDB.delete(`antinukeData_${guild.id}.whitelisted.${targetUserId}`)
 
                         await message.reply({
                             embeds: [
@@ -907,7 +970,7 @@ export const data = {
                         return message.reply({
                             embeds: [
                                 new EmbedBuilder()
-                                    .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                    .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                     .setDescription(
                                         `**Whitelist Management**\n\n` +
                                         `- \`antinuke whitelist add <member>\`\n└  Adds a whitelist user\n\n` +
@@ -943,13 +1006,16 @@ export const data = {
                         ]
                     })
                 }
-                const channel = message.mentions.channels.first() || message.guild.channels.cache.get(args[1]) || await message.guild.channels.fetch(args[1]).catch(() => null)
+                const cleanChannelId = String(args[1]).replace(/[<#>]/g, '').trim()
+                const channel = message.mentions?.channels?.first?.()
+                    || message.guild.channels.cache.get(cleanChannelId)
+                    || await message.guild.channels.fetch(cleanChannelId).catch(() => null)
 
-                if (!channel) {
+                if (!channel || (channel.type !== undefined && channel.type !== ChannelType.GuildText)) {
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setDescription(`${emojis.warn} **Please provide a valid channel mention or ID**`)
+                                .setDescription(`${emojis.warn} **Please provide a valid text channel mention or ID**`)
                                 .setColor(client.color)
                         ]
                     })
@@ -977,6 +1043,14 @@ export const data = {
                     })
                 }
 
+                const protectSync = await blueprintManager.syncProtectRoleIfStale(guild, client, antinukeData)
+                const roleDisplay = protectSync.role
+                    ? `<@&${protectSync.roleId}>`
+                    : `\`Missing / Deleted\` ${emojis.warn}`
+                const missingRoleWarning = protectSync.missing
+                    ? `\n\n${emojis.warn} **Warning**: Protection role is missing! Run \`antinuke disable\` and \`antinuke enable\` to recreate it.`
+                    : ''
+
                 const whitelistData = antinukeData?.whitelisted || {}
                 const whitelistedCount = Object.entries(whitelistData)?.length || 0
                 const extraOwnerCount = antinukeData?.extraOwners?.length || 0
@@ -984,16 +1058,18 @@ export const data = {
                 const embed = new EmbedBuilder()
                     .setDescription(
                         `__**${emojis.antinuke} Protection Details**__\n` +
-                        `> ${emojis.arrow} **Role:** <@&${antinukeData.protectRole}>\n` +
+                        `> ${emojis.arrow} **Role:** ${roleDisplay}\n` +
                         `> ${emojis.arrow} **Default Action:** \`${antinukeData.punishment?.toUpperCase()}\`\n` +
                         `> ${emojis.arrow} **Logging Channel:** ${antinukeData?.logsChannel ? `<#${antinukeData.logsChannel}>` : '`Not Set`'}\n` +
                         `> ${emojis.arrow} **Whitelist Users:** \`${whitelistedCount}\`\n` +
                         `> ${emojis.arrow} **ExtraOwners Count:** \`${extraOwnerCount}\`\n\n` +
                         `__**${emojis.gear} Active Protection Events**__\n` +
                         renderEventsList(antinukeData?.disabledEvents || []) +
+                        missingRoleWarning +
                         `\n\n-# **Note:- Move my "Roynix Protect" role to the top of all roles for the best performance**`
                     ).setColor(client.color)
-                    .setAuthor({ name: 'Roynix Antinuke System', iconURL: client.user.avatarURL({ size: 1024 }) })
+                    .setAuthor({ name: 'Roynix Shield System', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
+                    .setImage(config.banner || client.user.bannerURL({ size: 1024 }) || null)
                     .setFooter({ text: `Requested by ${message.author.username}`, iconURL: message.author.displayAvatarURL({ size: 1024 }) })
                     .setThumbnail(message.guild.iconURL({ size: 1024 }))
 
@@ -1048,7 +1124,8 @@ export const data = {
 
                 const buildMenu = (currentDisabled) => {
                     const embed = new EmbedBuilder()
-                        .setAuthor({ name: 'Roynix Antinuke Protection Modules', iconURL: client.user.avatarURL({ size: 1024 }) })
+                        .setAuthor({ name: 'Roynix Shield Protection Modules', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
+                        .setImage(config.banner || client.user.bannerURL({ size: 1024 }) || null)
                         .setDescription(
                             `Select a protection module from the dropdown below to toggle it **ON** or **OFF**.\n\n` +
                             `__**${emojis.gear} Current Module Status**__\n` +
@@ -1085,16 +1162,21 @@ export const data = {
                 });
 
                 const collector = replyMsg.createMessageComponentCollector({
-                    filter: i => i.user.id === message.author.id,
                     time: 120000
                 });
 
                 collector.on('collect', async i => {
+                    const authCheck = await verifyCollectorInteraction(i, message.author.id, guild, client, {
+                        requireEnabled: true,
+                        collector
+                    });
+                    if (!authCheck.ok) return;
+
                     const selectedKey = i.values[0];
                     const targetMod = antinukeModules.find(m => m.key === selectedKey);
                     if (!targetMod) return i.deferUpdate();
 
-                    const freshData = await antinukeDB.get(`antinukeData_${guild.id}`) || {};
+                    const freshData = authCheck.antinukeData || {};
                     const disabledList = freshData.disabledEvents || [];
                     const isOff = disabledList.includes(selectedKey);
                     const updatedDisabled = isOff
@@ -1134,13 +1216,13 @@ export const data = {
 
                 if (!action) {
                     const embed = new EmbedBuilder()
-                        .setAuthor({ name: 'Roynix Antinuke Punishment', iconURL: client.user.avatarURL({ size: 1024 }) })
+                        .setAuthor({ name: 'Roynix Shield Punishment', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                         .setDescription(
                             `- \`antinuke punishment set\`\n└  Sets the punishment of antinuke system\n\n` +
                             `- \`antinuke punishment show\`\n└  Show the current punishment of antinuke system`
                         )
                         .setFooter({ text: `Requested by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
-                        .setThumbnail(client.user.avatarURL({ size: 1024 }))
+                        .setThumbnail((config.avatar || client.user.displayAvatarURL({ size: 1024 })))
                         .setColor(client.color)
                     return message.reply({ embeds: [embed] })
                 }
@@ -1161,25 +1243,24 @@ export const data = {
 
                         const embed = new EmbedBuilder()
                             .setColor(client.color)
-                            .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                            .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                             .setTitle('Antinuke Action Configuration')
                             .setDescription(`${emojis.antinuke} **Choose the action that should be enforced when a security event is detected.**\n\n-# **Note:- Move my "Roynix Protect" role to the top of all roles for the best performance**`)
                             .setThumbnail(message.guild.iconURL({ size: 1024 }))
 
-
-
                         const sentMessage = await message.reply({ embeds: [embed], components: [row] });
-
 
                         const collector = sentMessage.createMessageComponentCollector({ time: 60000 });
                         let selectedAction;
                         collector.on('collect', async (interaction) => {
+                            const authCheck = await verifyCollectorInteraction(interaction, message.author.id, guild, client, {
+                                requireEnabled: true,
+                                collector
+                            });
+                            if (!authCheck.ok) return;
                             if (!interaction.isStringSelectMenu()) return;
-                            if (interaction.user.id !== message.author.id) {
-                                return i.reply({ content: 'You cannot interact with this.', flags: MessageFlags.Ephemeral });
-                            }
 
-                            const { customId, values, guild } = interaction;
+                            const { customId, values } = interaction;
 
                             if (customId === 'select_action') {
                                 selectedAction = values[0];
@@ -1188,11 +1269,10 @@ export const data = {
                                     await sentMessage.edit({
                                         embeds: [
                                             new EmbedBuilder()
-                                                .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                                .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                                 .setDescription(`${emojis.loading} **Configuring the antinuke punishment**`)
                                                 .setColor(client.color)
                                         ],
-                                        flags: MessageFlags.Ephemeral,
                                         components: []
                                     })
 
@@ -1201,15 +1281,14 @@ export const data = {
                                     await interaction.update({
                                         embeds: [
                                             new EmbedBuilder()
-                                                .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                                .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                                 .setColor(client.color)
                                                 .setDescription(`${emojis.tick} Antinuke action has been set to **${selectedAction}**`)
                                         ],
-                                        components: [],
-                                        flags: MessageFlags.Ephemeral
+                                        components: []
                                     });
 
-                                    collector.stop();
+                                    collector.stop('completed');
                                 } catch (error) {
                                     console.error('Failed to set antinuke action:', error);
                                     await interaction.followUp({
@@ -1220,7 +1299,6 @@ export const data = {
                             }
                         });
 
-
                         collector.on('end', async () => {
                             if (!selectedAction) {
                                 await sentMessage.edit({
@@ -1229,7 +1307,7 @@ export const data = {
                                             .setColor(client.color)
                                             .setDescription(`${emojis.warn} **Antinuke action setup timed out.**`)
                                     ], components: []
-                                });
+                                }).catch(() => null);
                             }
                         });
                         return
@@ -1241,7 +1319,7 @@ export const data = {
                         return message.reply({
                             embeds: [
                                 new EmbedBuilder()
-                                    .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                                    .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                                     .setDescription(`${emojis.antinuke} **Antinuke System punishment is currently set to ${action === 'kick' ? `\`Kick\` ${emojis.rmv}` : `\`Ban\` ${emojis.ban}`}**`)
                                     .setColor(client.color)
                             ]
@@ -1250,13 +1328,13 @@ export const data = {
 
                     default: {
                         const embed = new EmbedBuilder()
-                            .setAuthor({ name: 'Roynix Antinuke Punishment', iconURL: client.user.avatarURL({ size: 1024 }) })
+                            .setAuthor({ name: 'Roynix Shield Punishment', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                             .setDescription(
                                 `- \`antinuke punishment set\`\n└  Sets the punishment of antinuke system\n\n` +
                                 `- \`antinuke punishment show\`\n└  Show the current punishment of antinuke system`
                             )
                             .setFooter({ text: `Requested by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
-                            .setThumbnail(client.user.avatarURL({ size: 1024 }))
+                            .setThumbnail((config.avatar || client.user.displayAvatarURL({ size: 1024 })))
                             .setColor(client.color)
                         return message.reply({ embeds: [embed] })
                     }
@@ -1267,7 +1345,7 @@ export const data = {
                 return message.reply({
                     embeds: [
                         new EmbedBuilder()
-                            .setAuthor({ name: 'Roynix Antinuke', iconURL: client.user.avatarURL({ size: 1024 }) })
+                            .setAuthor({ name: 'Roynix Shield', iconURL: (config.avatar || client.user.displayAvatarURL({ size: 1024 })) })
                             .setDescription(
                                 `- \`antinuke enable\`\n└  Enable the antinuke system\n\n` +
                                 `- \`antinuke disable\`\n└  Disable the antinuke system\n\n` +
@@ -1278,7 +1356,7 @@ export const data = {
                                 `- \`antinuke config\`\n└  View current antinuke settings`
                             )
                             .setFooter({ text: `Requested by ${message.author.username}`, iconURL: message.author.avatarURL({ size: 1024 }) })
-                            .setThumbnail(client.user.avatarURL({ size: 1024 }))
+                            .setThumbnail((config.avatar || client.user.displayAvatarURL({ size: 1024 })))
                             .setColor(client.color)
                     ]
                 })

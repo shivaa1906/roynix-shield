@@ -10,6 +10,9 @@
   "author": "shiva (788970167907778562)",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "dependencies": {
     "@discordjs/builders": "^1.11.1",
     "@google-cloud/translate": "^9.0.1",

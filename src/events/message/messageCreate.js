@@ -8,6 +8,8 @@ import { handleAutoReact } from '../../modules/autoreact.js';
 import { handleMediaOnly } from '../../modules/mediaOnly.js';
 import { handleAutoResponder } from '../../modules/autoresponder.js';
 import handleMessage from '../../modules/afk.js';
+import { circuitBreaker } from '../../utils/circuitBreaker.js';
+import { quarantineGuildBots } from '../../antinuke/zeroTrustQuarantine.js';
 
 export const data = {
     name: Events.MessageCreate,
@@ -18,34 +20,45 @@ export const data = {
      * @returns 
      */
     async execute(message, client) {
-        if (message.author.bot || !message.guild) return;
+        if (!message.guild) return;
+        if (message.author.bot) return;
 
         const owner = isBotOwner(message.author.id);
         const prefix = config.prefix;
         const noprefixDB = client.noprefixDB;
-        const guildPrefix = (await client.prefixDB.get(`${message.guild.id}`).catch(() => null)) || prefix;
-
-        await handleAutoReact(message, client);
         if (await handleMediaOnly(message, client)) return;
-        await handleMessage(message, client);
-        await handleAutoResponder(message, client);
+
+        // Concurrently run background module handlers without blocking command parsing (0ms overhead)
+        Promise.allSettled([
+            handleAutoReact(message, client),
+            handleMessage(message, client),
+            handleAutoResponder(message, client)
+        ]);
 
         if (!client.cooldowns) client.cooldowns = new Collection();
         if (!client.cooldownLocks) client.cooldownLocks = new Collection();
 
-        const npData = await noprefixDB.get(`noprefix_${message.author.id}`);
+        // 0ms parallel in-memory lookup for guild prefix & noprefix permissions
+        const [guildPrefixVal, npData] = await Promise.all([
+            client.prefixDB.get(`${message.guild.id}`).catch(() => null),
+            noprefixDB.get(`noprefix_${message.author.id}`).catch(() => null)
+        ]);
+        const guildPrefix = guildPrefixVal || prefix;
+
         const isEnabled = npData?.enabled;
         const isExpired = npData?.endTimestamp && Date.now() > npData.endTimestamp;
         const hasNoprefix = isEnabled && (npData.plan === 'Lifetime' || !isExpired);
 
         if ([`<@${client.user.id}>`, `<@!${client.user.id}>`].includes(message.content.trim())) {
+            const botAvatar = config.avatar || client.user.displayAvatarURL({ size: 1024 });
+            const botBanner = config.banner || client.user.bannerURL({ size: 1024 }) || null;
             const embed = new EmbedBuilder()
                 .setColor(client.color)
-                .setAuthor({ name: client.user.tag, iconURL: client.user.avatarURL({ size: 1024 }) })
+                .setAuthor({ name: client.user.tag, iconURL: botAvatar })
                 .setDescription(`${emojis.slash} **My prefix is** \`${guildPrefix}\`\n${emojis.info} **Use** \`${guildPrefix}help\` **to see all my commands!**`)
-                .setImage(config.banner || client.user.bannerURL({ size: 1024 }) || null)
+                .setImage(botBanner)
                 .setFooter({ text: `Requested by ${message.author.username}`, iconURL: message.author.displayAvatarURL() })
-                .setThumbnail(client.user.avatarURL({ size: 1024 }));
+                .setThumbnail(botAvatar);
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()

@@ -1,8 +1,8 @@
 import { AuditLogEvent, EmbedBuilder } from 'discord.js';
-import { isBotOwner } from '../utils/isBotOwner.js';
 import emojis from '../config/emojis.js';
 import { getAuditExecutor } from '../utils/getExecutor.js';
 import { punishExecutor } from '../utils/punishExecutor.js';
+import { incidentCoordinator } from '../utils/incidentCoordinator.js';
 
 export const data = {
     /**
@@ -10,34 +10,47 @@ export const data = {
      */
     async execute(client) {
         client.on('stickerCreate', async (sticker) => {
-            const guild = sticker.guild;
+            const guild = sticker?.guild;
             if (!guild) return;
             const event = 'antiStickerCreate';
 
             const antinukeData = await client.getAntinukeData(guild.id);
-            const isAntinukeEnabled = antinukeData?.enabled || false;
-            if (!isAntinukeEnabled) return;
+            if (!antinukeData?.enabled) return;
             if (antinukeData?.disabledEvents?.includes(event)) return;
 
-            const extraOwners = antinukeData?.extraOwners || [];
-            const whitelisted = antinukeData?.whitelisted || {};
             const punishment = antinukeData?.punishment || 'ban';
-
             const executor = await getAuditExecutor(guild, AuditLogEvent.StickerCreate, sticker.id, client);
-            if (!executor) return;
+            const coordinator = client.incidentCoordinator || incidentCoordinator;
 
-            if (
-                executor.id === client.user.id ||
-                executor.id === guild.ownerId ||
-                isBotOwner(executor.id) ||
-                extraOwners.includes(executor.id) ||
-                whitelisted[executor.id]?.events?.includes(event)
-            ) return;
+            const incident = coordinator.coordinateIncident({
+                guild,
+                client,
+                antinukeData,
+                actionType: AuditLogEvent.StickerCreate,
+                moduleKey: event,
+                targetId: sticker.id,
+                executorId: executor?.id || null,
+                auditEntryId: executor?.auditEntryId || null
+            });
+
+            if (incident.decision !== 'enforce' || !executor?.id) return;
 
             const trackingKey = `${guild.id}_antiStickerCreate_${sticker.id}_${executor.id}`;
             const [actionTaken, stickerDeleted] = await Promise.all([
-                punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Sticker Create', client, trackingKey),
-                sticker.delete('Roynix Antinuke System | Unauthorized Sticker Creation').then(() => true).catch(() => false)
+                punishExecutor(
+                    guild,
+                    executor,
+                    punishment,
+                    'Roynix Antinuke System | Anti Sticker Create',
+                    client,
+                    trackingKey,
+                    { incident, antinukeData, moduleKey: event, targetId: sticker.id }
+                ),
+                !antinukeData?.disabledEvents?.includes('autoRecovery')
+                    ? coordinator.executeRecovery(incident, () =>
+                        sticker.delete('Roynix Antinuke System | Unauthorized Sticker Creation').then(() => true).catch(() => false)
+                    )
+                    : Promise.resolve(false)
             ]);
 
             const logChannelId = antinukeData?.logsChannel;

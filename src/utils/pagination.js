@@ -6,6 +6,7 @@ import {
     MessageFlags
 } from 'discord.js';
 import emojis from '../config/emojis.js';
+import { isCommandAuthorized } from './securityPolicy.js';
 
 /**
  * @param {import('discord.js').Message | import('discord.js').CommandInteraction} context
@@ -90,6 +91,17 @@ export async function paginate(context, items, itemsPerPage, generateEmbed, bkl,
                 content: "You're not allowed to use these buttons.",
                 flags: MessageFlags.Ephemeral,
             });
+        }
+
+        if (context.guild && client?.antinukeDB) {
+            const freshData = await client.antinukeDB.get(`antinukeData_${context.guild.id}`);
+            if (freshData && !isCommandAuthorized(context.guild, interaction.user.id, freshData, client)) {
+                collector.stop('unauthorized');
+                return interaction.reply({
+                    content: "Your authorization has been revoked.",
+                    flags: MessageFlags.Ephemeral,
+                });
+            }
         }
 
         switch (interaction.customId) {

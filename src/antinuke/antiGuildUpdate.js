@@ -1,8 +1,8 @@
 import { AuditLogEvent, EmbedBuilder } from 'discord.js';
-import { isBotOwner } from '../utils/isBotOwner.js';
 import emojis from '../config/emojis.js';
 import { getAuditExecutor } from '../utils/getExecutor.js';
 import { punishExecutor } from '../utils/punishExecutor.js';
+import { incidentCoordinator } from '../utils/incidentCoordinator.js';
 
 export const data = {
     /**
@@ -13,52 +13,63 @@ export const data = {
         client.on('guildUpdate', async (oldGuild, newGuild) => {
             const event = 'antiGuildUpdate';
             const guild = newGuild;
+            if (!guild?.id) return;
 
             const antinukeData = await client.getAntinukeData(guild.id);
-            const isAntinukeEnabled = antinukeData?.enabled || false;
-            if (!isAntinukeEnabled) return;
+            if (!antinukeData?.enabled) return;
             if (antinukeData?.disabledEvents?.includes(event)) return;
 
-            const extraOwners = antinukeData?.extraOwners || [];
-            const whitelisted = antinukeData?.whitelisted || {};
             const punishment = antinukeData?.punishment || 'ban';
-
             const executor = await getAuditExecutor(guild, AuditLogEvent.GuildUpdate, guild.id, client);
-            if (!executor) return;
+            const coordinator = client.incidentCoordinator || incidentCoordinator;
 
-            if (
-                executor.id === client.user.id ||
-                executor.id === guild.ownerId ||
-                isBotOwner(executor.id) ||
-                extraOwners.includes(executor.id) ||
-                whitelisted[executor.id]?.events?.includes(event)
-            ) return;
+            const incident = coordinator.coordinateIncident({
+                guild,
+                client,
+                antinukeData,
+                actionType: AuditLogEvent.GuildUpdate,
+                moduleKey: event,
+                targetId: guild.id,
+                executorId: executor?.id || null,
+                auditEntryId: executor?.auditEntryId || null
+            });
+
+            if (incident.decision !== 'enforce' || !executor?.id) return;
 
             const trackingKey = `${guild.id}_antiGuildUpdate_${guild.id}_${executor.id}`;
-            const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Guild Update', client, trackingKey);
+            const punishPromise = punishExecutor(
+                guild,
+                executor,
+                punishment,
+                'Roynix Antinuke System | Anti Guild Update',
+                client,
+                trackingKey,
+                { incident, antinukeData, moduleKey: event, targetId: guild.id }
+            );
 
-            const revertPromise = (async () => {
-                if (antinukeData?.disabledEvents?.includes('autoRecovery')) return false;
-                try {
-                    await newGuild.edit({
-                        name: oldGuild.name,
-                        description: oldGuild.description || null,
-                        icon: oldGuild.iconURL({ dynamic: true }) || null,
-                        banner: oldGuild.bannerURL({ dynamic: true }) || null,
-                        splash: oldGuild.splashURL({ dynamic: true }) || null,
-                        systemChannel: oldGuild.systemChannelId || null,
-                        verificationLevel: oldGuild.verificationLevel,
-                        defaultMessageNotifications: oldGuild.defaultMessageNotifications,
-                        explicitContentFilter: oldGuild.explicitContentFilter,
-                        afkChannel: oldGuild.afkChannelId || null,
-                        afkTimeout: oldGuild.afkTimeout,
-                        features: oldGuild.features || null,
-                    }, "Roynix Antinuke System | Guild Update Reverted");
-                    return true;
-                } catch {
-                    return false;
-                }
-            })();
+            const revertPromise = !antinukeData?.disabledEvents?.includes('autoRecovery')
+                ? coordinator.executeRecovery(incident, async () => {
+                    try {
+                        await newGuild.edit({
+                            name: oldGuild.name,
+                            description: oldGuild.description || null,
+                            icon: oldGuild.iconURL?.({ dynamic: true }) || null,
+                            banner: oldGuild.bannerURL?.({ dynamic: true }) || null,
+                            splash: oldGuild.splashURL?.({ dynamic: true }) || null,
+                            systemChannel: oldGuild.systemChannelId || null,
+                            verificationLevel: oldGuild.verificationLevel,
+                            defaultMessageNotifications: oldGuild.defaultMessageNotifications,
+                            explicitContentFilter: oldGuild.explicitContentFilter,
+                            afkChannel: oldGuild.afkChannelId || null,
+                            afkTimeout: oldGuild.afkTimeout,
+                            features: oldGuild.features || null,
+                        }, "Roynix Antinuke System | Guild Update Reverted");
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                })
+                : Promise.resolve(false);
 
             const [actionTaken, guildReverted] = await Promise.all([punishPromise, revertPromise]);
 

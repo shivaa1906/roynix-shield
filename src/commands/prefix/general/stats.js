@@ -8,6 +8,7 @@ import {
   import getQuickDBPing from '../../../utils/dbPing.js';
   import getUptimeTimestamp from '../../../utils/uptime.js';
   import emojis from '../../../config/emojis.js';
+import config from '../../../config/config.js';
   import os from 'os';
   import process from 'process';
   
@@ -81,7 +82,7 @@ import {
   
         const embeds = {
           general: new EmbedBuilder()
-            .setAuthor({ name: `Roynix Shield Statistics (${type.toUpperCase()})`, iconURL: client.user.displayAvatarURL() })
+            .setAuthor({ name: `Roynix Shield Statistics (${type.toUpperCase()})`, iconURL: config.avatar || client.user.displayAvatarURL({ size: 1024 }) })
             .setDescription([
               `${emojis.general} __**General Information**__`,
               `> **Bot Version**: \`${version}\``,
@@ -97,12 +98,12 @@ import {
               `> **Channels**: \`${channelCount}\``,
               `> **Emojis**: \`${emojiCount}\``
             ].join('\n'))
-            .setThumbnail(client.user.displayAvatarURL())
+            .setThumbnail(config.avatar || client.user.displayAvatarURL({ size: 1024 }))
             .setFooter({ text: `Requested by ${message.author.tag}`, iconURL: message.author.displayAvatarURL() })
             .setColor(client.color),
   
           system: new EmbedBuilder()
-            .setAuthor({ name: 'System Statistics', iconURL: client.user.displayAvatarURL() })
+            .setAuthor({ name: 'System Statistics', iconURL: config.avatar || client.user.displayAvatarURL({ size: 1024 }) })
             .setDescription([
               `${emojis.system} __**System Information**__`,
               `> **OS**: \`${os.platform()} ${os.arch()}\``,
@@ -116,12 +117,12 @@ import {
               `> **Process Memory**: \`${(memoryUsage.rss / 1024 / 1024).toFixed(2)}MB\``,
               `> **Heap Used**: \`${(memoryUsage.heapUsed / 1024 / 1024).toFixed(2)}MB\``
             ].join('\n'))
-            .setThumbnail(client.user.displayAvatarURL())
+            .setThumbnail(config.avatar || client.user.displayAvatarURL({ size: 1024 }))
             .setFooter({ text: `Requested by ${message.author.tag}`, iconURL: message.author.displayAvatarURL() })
             .setColor(client.color),
   
           team: new EmbedBuilder()
-            .setAuthor({ name: 'Team Information', iconURL: client.user.displayAvatarURL() })
+            .setAuthor({ name: 'Team Information', iconURL: config.avatar || client.user.displayAvatarURL({ size: 1024 }) })
             .setDescription([
               `### ${emojis.member} __**Development Team**__`,
               `${emojis.developer} **Developers:**`,
@@ -129,7 +130,7 @@ import {
             ].join('\n'))
             .setColor(client.color)
             .setFooter({ text: `Requested by ${message.author.tag}`, iconURL: message.author.displayAvatarURL() })
-            .setThumbnail(client.user.displayAvatarURL())
+            .setThumbnail(config.avatar || client.user.displayAvatarURL({ size: 1024 }))
         };
   
         const getNavRow = (active) => new ActionRowBuilder().addComponents(

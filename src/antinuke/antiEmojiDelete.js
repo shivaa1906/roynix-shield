@@ -1,8 +1,8 @@
 import { AuditLogEvent, EmbedBuilder } from 'discord.js';
-import { isBotOwner } from '../utils/isBotOwner.js';
 import emojis from '../config/emojis.js';
 import { getAuditExecutor } from '../utils/getExecutor.js';
 import { punishExecutor } from '../utils/punishExecutor.js';
+import { incidentCoordinator } from '../utils/incidentCoordinator.js';
 
 export const data = {
   /**
@@ -10,7 +10,7 @@ export const data = {
    */
   async execute(client) {
     client.on('emojiDelete', async (emoji) => {
-      const guild = emoji.guild;
+      const guild = emoji?.guild;
       if (!guild) return;
       const event = 'antiEmojiDelete';
 
@@ -18,38 +18,49 @@ export const data = {
       if (!antinukeData?.enabled) return;
       if (antinukeData?.disabledEvents?.includes(event)) return;
 
-      const extraOwners = antinukeData.extraOwners || [];
-      const whitelisted = antinukeData.whitelisted || {};
       const punishment = antinukeData.punishment || 'ban';
-
       const executor = await getAuditExecutor(guild, AuditLogEvent.EmojiDelete, emoji.id, client);
-      if (!executor) return;
+      const coordinator = client.incidentCoordinator || incidentCoordinator;
 
-      if (
-        executor.id === client.user.id ||
-        executor.id === guild.ownerId ||
-        isBotOwner(executor.id) ||
-        extraOwners.includes(executor.id) ||
-        whitelisted[executor.id]?.events?.includes(event)
-      ) return;
+      const incident = coordinator.coordinateIncident({
+        guild,
+        client,
+        antinukeData,
+        actionType: AuditLogEvent.EmojiDelete,
+        moduleKey: event,
+        targetId: emoji.id,
+        executorId: executor?.id || null,
+        auditEntryId: executor?.auditEntryId || null
+      });
+
+      if (incident.decision !== 'enforce' || !executor?.id) return;
 
       const trackingKey = `${guild.id}_antiEmojiDelete_${emoji.id}_${executor.id}`;
-      const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Emoji Delete', client, trackingKey);
-      const recoverPromise = (async () => {
-        if (antinukeData?.disabledEvents?.includes('autoRecovery')) return false;
-        try {
-          const emojiBuffer = await fetch(emoji.url).then(res => res.arrayBuffer());
-          const file = Buffer.from(emojiBuffer);
-          const newEmoji = await guild.emojis.create({
-            attachment: file,
-            name: emoji.name,
-            reason: 'Roynix Antinuke System | Emoji Recovered'
-          });
-          return !!newEmoji;
-        } catch (err) {
-          return false;
-        }
-      })();
+      const punishPromise = punishExecutor(
+        guild,
+        executor,
+        punishment,
+        'Roynix Antinuke System | Anti Emoji Delete',
+        client,
+        trackingKey,
+        { incident, antinukeData, moduleKey: event, targetId: emoji.id }
+      );
+      const recoverPromise = !antinukeData?.disabledEvents?.includes('autoRecovery')
+        ? coordinator.executeRecovery(incident, async () => {
+            try {
+              const emojiBuffer = await fetch(emoji.url).then(res => res.arrayBuffer());
+              const file = Buffer.from(emojiBuffer);
+              const newEmoji = await guild.emojis.create({
+                attachment: file,
+                name: emoji.name,
+                reason: 'Roynix Antinuke System | Emoji Recovered'
+              });
+              return !!newEmoji;
+            } catch {
+              return false;
+            }
+          })
+        : Promise.resolve(false);
 
       const [actionTaken, recreated] = await Promise.all([punishPromise, recoverPromise]);
 

@@ -1,8 +1,8 @@
 import { AuditLogEvent, EmbedBuilder } from 'discord.js';
-import { isBotOwner } from '../utils/isBotOwner.js';
 import emojis from '../config/emojis.js';
 import { getAuditExecutor } from '../utils/getExecutor.js';
 import { punishExecutor } from '../utils/punishExecutor.js';
+import { incidentCoordinator } from '../utils/incidentCoordinator.js';
 
 export const data = {
     /**
@@ -10,45 +10,53 @@ export const data = {
      */
     async execute(client) {
         client.on('guildBanRemove', async (ban) => {
-            const guild = ban.guild;
-            const user = ban.user;
+            const guild = ban?.guild;
+            const user = ban?.user;
             if (!guild || !user) return;
 
             const event = 'antiUnban';
 
             const antinukeData = await client.getAntinukeData(guild.id);
-            const isAntinukeEnabled = antinukeData?.enabled || false;
-            if (!isAntinukeEnabled) return;
+            if (!antinukeData?.enabled) return;
             if (antinukeData?.disabledEvents?.includes(event)) return;
 
-            const extraOwners = antinukeData?.extraOwners || [];
-            const whitelisted = antinukeData?.whitelisted || {};
             const punishment = antinukeData?.punishment || 'ban';
-
             const executor = await getAuditExecutor(guild, AuditLogEvent.MemberBanRemove, user.id, client);
-            if (!executor) return;
+            const coordinator = client.incidentCoordinator || incidentCoordinator;
 
-            if (
-                executor.id === client.user.id ||
-                executor.id === guild.ownerId ||
-                isBotOwner(executor.id) ||
-                extraOwners.includes(executor.id) ||
-                whitelisted[executor.id]?.events?.includes(event)
-            ) return;
+            const incident = coordinator.coordinateIncident({
+                guild,
+                client,
+                antinukeData,
+                actionType: AuditLogEvent.MemberBanRemove,
+                moduleKey: event,
+                targetId: user.id,
+                executorId: executor?.id || null,
+                auditEntryId: executor?.auditEntryId || null
+            });
+
+            if (incident.decision !== 'enforce' || !executor?.id) return;
 
             const trackingKey = `${guild.id}_antiUnban_${user.id}_${executor.id}`;
-            const punishPromise = punishExecutor(guild, executor, punishment, 'Roynix Antinuke System | Anti Unban', client, trackingKey);
-            const rebanPromise = (async () => {
-                if (!antinukeData?.disabledEvents?.includes('autoRecovery')) {
+            const punishPromise = punishExecutor(
+                guild,
+                executor,
+                punishment,
+                'Roynix Antinuke System | Anti Unban',
+                client,
+                trackingKey,
+                { incident, antinukeData, moduleKey: event, targetId: user.id }
+            );
+            const rebanPromise = !antinukeData?.disabledEvents?.includes('autoRecovery')
+                ? coordinator.executeRecovery(incident, async () => {
                     try {
                         await guild.bans.create(user.id, { reason: 'Roynix Antinuke System | Unauthorized Unban Reverted' });
                         return true;
                     } catch {
                         return false;
                     }
-                }
-                return false;
-            })();
+                })
+                : Promise.resolve(false);
 
             const [actionTaken, rebanned] = await Promise.all([punishPromise, rebanPromise]);
 
