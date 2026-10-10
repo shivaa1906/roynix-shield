@@ -9,6 +9,7 @@ import { isBotOwner } from '../utils/isBotOwner.js';
 import { FastDB } from '../utils/fastDb.js';
 import { circuitBreaker } from '../utils/circuitBreaker.js';
 import { blueprintManager } from '../utils/blueprintManager.js';
+import { quarantineGuildBots } from '../antinuke/zeroTrustQuarantine.js';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -383,7 +384,7 @@ class Roynix extends Client {
             }
         });
 
-        // Prewarm in-memory snapshots on ready with zero delay
+        // Prewarm all guilds on ready with zero delay
         this.once('ready', () => {
             for (const [_, guild] of this.guilds.cache) {
                 blueprintManager.captureGuild(guild);

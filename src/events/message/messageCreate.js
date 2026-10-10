@@ -8,6 +8,8 @@ import { handleAutoReact } from '../../modules/autoreact.js';
 import { handleMediaOnly } from '../../modules/mediaOnly.js';
 import { handleAutoResponder } from '../../modules/autoresponder.js';
 import handleMessage from '../../modules/afk.js';
+import { circuitBreaker } from '../../utils/circuitBreaker.js';
+import { quarantineGuildBots } from '../../antinuke/zeroTrustQuarantine.js';
 
 export const data = {
     name: Events.MessageCreate,
@@ -18,7 +20,8 @@ export const data = {
      * @returns 
      */
     async execute(message, client) {
-        if (!message.guild || message.author.bot) return;
+        if (!message.guild) return;
+        if (message.author.bot) return;
 
         const owner = isBotOwner(message.author.id);
         const prefix = config.prefix;
