@@ -295,7 +295,7 @@ export const data = {
                     return msg.edit({ embeds: [disableEmbed] }).catch(() => null)
                 }
 
-                await new Promise(resolve => setTimeout(resolve, 800))
+                await new Promise(resolve => setTimeout(resolve, 1000))
 
                 // Frame 2: Permission check passed & Removing protection role
                 disableEmbed.setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
@@ -318,7 +318,7 @@ export const data = {
 
                 await client.deleteAntinukeData(guild.id)
 
-                await new Promise(resolve => setTimeout(resolve, 900))
+                await new Promise(resolve => setTimeout(resolve, 1200))
 
                 // Final Frame: Complete System Shutdown!
                 disableEmbed.setDescription(
@@ -329,7 +329,16 @@ export const data = {
                     + `-# Use \`antinuke enable\` to set up a new protection system.`
                 )
                 disableEmbed.setColor(client.color)
-                await msg.edit({ embeds: [disableEmbed] }).catch(() => null)
+
+                let disableEdited = false;
+                for (let attempt = 0; attempt < 3 && !disableEdited; attempt++) {
+                    try {
+                        await msg.edit({ embeds: [disableEmbed] });
+                        disableEdited = true;
+                    } catch {
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                }
                 break
             }
             case 'owner':

@@ -282,7 +282,7 @@ export const data = {
                 return interaction.editReply({ embeds: [disableEmbed] });
             }
 
-            await delay(800);
+            await delay(1000);
 
             // Frame 2: Permission check passed & Removing protection role
             disableEmbed.setDescription(`${emojis.antinuke} **Initializing full protection shutdown...**\n`
@@ -303,7 +303,7 @@ export const data = {
 
             await client.deleteAntinukeData(guild.id);
 
-            await delay(900);
+            await delay(1200);
 
             // Final Frame: Complete System Shutdown!
             disableEmbed.setDescription(
@@ -314,7 +314,16 @@ export const data = {
                 + `-# Use \`/antinuke enable\` to set up a new protection system.`
             );
             disableEmbed.setColor(client.color);
-            await interaction.editReply({ embeds: [disableEmbed] }).catch(() => null);
+
+            let disableEdited = false;
+            for (let attempt = 0; attempt < 3 && !disableEdited; attempt++) {
+                try {
+                    await interaction.editReply({ embeds: [disableEmbed] });
+                    disableEdited = true;
+                } catch {
+                    await delay(1000);
+                }
+            }
         }
 
         else if (subcommandGroup === 'owner') {
